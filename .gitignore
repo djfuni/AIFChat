@@ -37,3 +37,4 @@ Thumbs.db
 
 # Metro
 metro-cache/
+.jdk17/
