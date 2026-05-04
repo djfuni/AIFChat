@@ -3,7 +3,7 @@
     "name": "AIF Chat",
     "slug": "aif-chat-mobile",
     "scheme": "aifchat",
-    "version": "1.0.0",
+    "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -26,7 +26,10 @@
       "permissions": []
     },
     "extra": {
-      "apiBaseUrl": "https://api.aifmusic.top"
+      "apiBaseUrl": "https://api.aifmusic.top",
+      "eas": {
+        "projectId": "8e4a71cb-e25f-44af-b09d-57ec5aff6328"
+      }
     }
   }
 }

@@ -1,12 +1,39 @@
+# Dependencies
 node_modules/
+server/vendor/
+
+# Environment
+.env
+server/.env
+
+# Build
+android/.gradle/
+android/app/build/
+android/app/release/
+*.apk
+*.aab
+*.keystore
+
+# Expo
 .expo/
 dist/
 web-build/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.env
-*.jks
-*.keystore
-android/
-ios/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# React Native
+*.hbc
+
+# Metro
+metro-cache/

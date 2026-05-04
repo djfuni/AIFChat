@@ -7,6 +7,9 @@ export type User = {
   role?: string;
   status?: string;
   points?: number;
+  tokens_used?: number;
+  tokens_limit?: number;
+  tokens_remaining?: number;
 };
 
 export type AuthPayload = {
@@ -32,6 +35,12 @@ export type ChatMessage = {
   role: 'system' | 'user' | 'assistant';
   content: string;
   createdAt: number;
+  /** base64 encoded image data (user messages only) */
+  imageData?: string;
+  /** MIME type of the image, e.g. 'image/jpeg' */
+  imageMimeType?: string;
+  /** Whether this assistant message is an error placeholder */
+  isError?: boolean;
 };
 
 export type ApiResult<T = unknown> = {
@@ -43,4 +52,8 @@ export type ApiResult<T = unknown> = {
   models?: ModelItem[];
   message?: string;
   usage?: Record<string, unknown>;
+  // 验证码字段（顶级）
+  captcha_id?: string;
+  svg?: string;
+  expires_in?: number;
 };
