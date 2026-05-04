@@ -1,0 +1,34 @@
+{
+  "name": "aif-chat-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "start:clear": "expo start -c",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "doctor": "npx expo-doctor",
+    "check:config": "node scripts/check-config.mjs",
+    "build:android:apk": "npx eas-cli@latest build -p android --profile preview",
+    "build:android:apk:local": "npx eas-cli@latest build -p android --profile preview --local",
+    "build:android:aab": "npx eas-cli@latest build -p android --profile production"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^14.0.4",
+    "expo": "^52.0.0",
+    "expo-secure-store": "~14.0.1",
+    "expo-status-bar": "~2.0.0",
+    "react": "18.3.1",
+    "react-native": "0.76.5",
+    "react-native-paper": "^5.13.1",
+    "react-native-safe-area-context": "4.12.0",
+    "react-native-svg": "15.8.0"
+  },
+  "devDependencies": {
+    "@types/react": "~18.3.12",
+    "typescript": "^5.6.3"
+  }
+}
