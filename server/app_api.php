@@ -155,17 +155,22 @@ try {
             );
             $stmt->execute([$email, $code, $expiresAt]);
 
-            // 尝试发送邮件（失败不阻塞注册）
-            try {
-                sendVerificationEmail($email, $code);
-            } catch (\Throwable $e) {
-                // 开发模式下直接返回验证码
-                $debugCode = $code;
-                // 生产环境应记录日志
-                error_log('邮件发送失败: ' . $e->getMessage());
+            // 尝试发送邮件
+            $noSmtp = empty(config('SMTP_HOST', ''));
+            if ($noSmtp) {
+                // SMTP 未配置，直接返回验证码（调试模式）
+                error_log('[AIF Chat] SMTP 未配置，验证码直接返回: ' . $code);
+                success(['msg' => '验证码（调试模式）', 'debug_code' => $code]);
+            } else {
+                try {
+                    sendVerificationEmail($email, $code);
+                } catch (\Throwable $e) {
+                    // 开发模式下直接返回验证码
+                    error_log('邮件发送失败: ' . $e->getMessage());
+                    success(['msg' => '验证码（邮件发送失败，调试模式）', 'debug_code' => $code]);
+                }
+                success(['msg' => '验证码已发送']);
             }
-
-            success(['msg' => '验证码已发送']);
             break;
 
         // ====================== 用户注册 ======================

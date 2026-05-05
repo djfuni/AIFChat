@@ -190,7 +190,7 @@ function isModelAllowed(modelId: string): boolean {
 }
 
 type Screen = 'boot' | 'boot_error' | 'login' | 'register' | 'chat';
-type Notice = { text: string; tone?: 'normal' | 'error' };
+type Notice = { text: string; tone?: 'normal' | 'error' | 'warning' };
 
 function nowId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -395,6 +395,7 @@ function RegisterScreen({ onRegistered, onBack, notice }: {
   const [sendingCode, setSendingCode] = useState(false);
   const [captchaLoading, setCaptchaLoading] = useState(false);
   const [captchaError, setCaptchaError] = useState('');
+  const [debugCode, setDebugCode] = useState('');
 
   const reloadCaptcha = useCallback(async () => {
     setCaptchaLoading(true);
@@ -404,6 +405,7 @@ function RegisterScreen({ onRegistered, onBack, notice }: {
       setCaptchaId(captcha.captcha_id);
       setCaptchaSvg(captcha.svg);
       setCaptchaCode('');
+      setDebugCode('');
     } catch (error) {
       const msg = asErrorMessage(error);
       setCaptchaError(msg);
@@ -423,9 +425,16 @@ function RegisterScreen({ onRegistered, onBack, notice }: {
       return;
     }
     setSendingCode(true);
+    setDebugCode('');
     try {
-      await sendEmailCode(email.trim(), captchaId, captchaCode.trim());
-      notice({ text: '邮箱验证码已发送 ~' });
+      const result = await sendEmailCode(email.trim(), captchaId, captchaCode.trim());
+      if (result.debug_code) {
+        setDebugCode(result.debug_code);
+        setEmailCode(result.debug_code);
+        notice({ text: '⚠️ 调试模式 - 验证码已自动填入', tone: 'warning' });
+      } else {
+        notice({ text: '邮箱验证码已发送 ~' });
+      }
     } catch (error) {
       await reloadCaptcha();
       notice({ text: asErrorMessage(error), tone: 'error' });
@@ -484,6 +493,11 @@ function RegisterScreen({ onRegistered, onBack, notice }: {
               <IconButton icon="refresh" mode="contained" containerColor={theme.colors.primary} iconColor={theme.colors.onPrimary} onPress={reloadCaptcha} size={24} />
             </View>
             <TextInput mode="outlined" label="图片验证码" value={captchaCode} autoCapitalize="characters" onChangeText={setCaptchaCode} style={styles.input} left={<TextInput.Icon icon="image-outline" />} />
+            {debugCode ? (
+              <Surface mode="flat" style={styles.debugCodeBox}>
+                <Text variant="labelMedium" style={styles.debugCodeText}>🔧 调试模式 - 验证码：<Text variant="labelLarge" style={styles.debugCodeValue}>{debugCode}</Text></Text>
+              </Surface>
+            ) : null}
             <View style={styles.codeRow}>
               <TextInput mode="outlined" label="邮箱验证码" value={emailCode} keyboardType="number-pad" onChangeText={setEmailCode} style={styles.codeInput} left={<TextInput.Icon icon="numeric" />} />
               <Button mode="contained" loading={sendingCode} disabled={sendingCode} onPress={sendCode} style={styles.codeButton} contentStyle={styles.codeButtonContent} labelStyle={styles.codeButtonLabel}>发送</Button>
@@ -2045,7 +2059,11 @@ function Root() {
         visible={Boolean(notice)}
         onDismiss={() => setNotice(null)}
         duration={3600}
-        style={[notice?.tone === 'error' ? styles.errorSnack : undefined, { borderRadius: 28 }]}
+        style={[
+          notice?.tone === 'error' ? styles.errorSnack : undefined,
+          notice?.tone === 'warning' ? styles.warningSnack : undefined,
+          { borderRadius: 28 },
+        ]}
       >
         {notice?.text || ''}
       </Snackbar>
@@ -2127,6 +2145,9 @@ const styles = StyleSheet.create({
   codeButton: { borderRadius: 22, alignSelf: 'stretch', justifyContent: 'center' },
   codeButtonContent: { paddingVertical: 4 },
   codeButtonLabel: { fontWeight: '700' },
+  debugCodeBox: { borderRadius: 12, padding: 10, marginBottom: 8, backgroundColor: theme.colors.tertiaryContainer },
+  debugCodeText: { color: theme.colors.onTertiaryContainer, textAlign: 'center' },
+  debugCodeValue: { fontWeight: '700', letterSpacing: 2 },
 
   // 聊天顶栏
   chatMetaBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: theme.colors.surface },
@@ -2170,6 +2191,7 @@ const styles = StyleSheet.create({
 
   // 通知
   errorSnack: { backgroundColor: theme.colors.error },
+  warningSnack: { backgroundColor: theme.colors.tertiary },
 
   // 历史
   emptyHistoryInner: { alignItems: 'center', justifyContent: 'center', paddingTop: 64, gap: 4 },

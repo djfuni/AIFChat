@@ -20,5 +20,5 @@ export const APP_COPY = {
   joinQQGroup: '加入官方 QQ 群',
   community: '提示词广场',
   allowedModelPrefixes: ['lite', 'pro', 'github'],
-  version: '1.5.0',
+  version: '1.6.1',
 };

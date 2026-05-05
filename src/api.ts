@@ -135,12 +135,13 @@ export async function getCaptcha(): Promise<{ captcha_id: string; svg: string; e
   return { captcha_id: captchaId, svg, expires_in: expiresIn || 300 };
 }
 
-export async function sendEmailCode(email: string, captchaId: string, captchaCode: string): Promise<void> {
-  await rawRequest('send_email_code', {
+export async function sendEmailCode(email: string, captchaId: string, captchaCode: string): Promise<{ debug_code?: string }> {
+  const result = await rawRequest<never>('send_email_code', {
     email,
     captcha_id: captchaId,
     captcha_code: captchaCode,
   });
+  return { debug_code: (result as { debug_code?: string }).debug_code };
 }
 
 export async function register(input: {
