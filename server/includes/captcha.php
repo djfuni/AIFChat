@@ -105,15 +105,15 @@ function renderCaptchaSvg(string $text): string
     $textX = 30;
     $textY = 42;
 
-    return <<<SVG
-<svg xmlns="http://www.w3.org/2000/svg" width="$width" height="$height" viewBox="0 0 $width $height">
-  <rect width="$width" height="$height" fill="#f5f5f5" rx="8" />
-  {$lines[0] ?? ''}
-  {$lines[1] ?? ''}
-  {$lines[2] ?? ''}
-  {$circles[0] ?? ''}
-  {$circles[1] ?? ''}
-  <text x="$textX" y="$textY" font-size="$fontSize" font-family="monospace" font-weight="bold" fill="#333" transform="rotate(-3, 100, 30)">{$text}</text>
-</svg>
-SVG;
+    $l0 = $lines[0] ?? '';
+    $l1 = $lines[1] ?? '';
+    $l2 = $lines[2] ?? '';
+    $c0 = $circles[0] ?? '';
+    $c1 = $circles[1] ?? '';
+
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="' . $width . '" height="' . $height . '" viewBox="0 0 ' . $width . ' ' . $height . '">'
+      . '<rect width="' . $width . '" height="' . $height . '" fill="#f5f5f5" rx="8" />'
+      . $l0 . $l1 . $l2 . $c0 . $c1
+      . '<text x="' . $textX . '" y="' . $textY . '" font-size="' . $fontSize . '" font-family="monospace" font-weight="bold" fill="#333" transform="rotate(-3, 100, 30)">' . htmlspecialchars($text) . '</text>'
+      . '</svg>';
 }
