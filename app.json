@@ -3,7 +3,7 @@
     "name": "AIF Chat",
     "slug": "aif-chat-mobile",
     "scheme": "aifchat",
-    "version": "1.6.1",
+    "version": "1.7.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -23,7 +23,7 @@
         "backgroundColor": "#FFFBFE",
         "foregroundImage": "./assets/adaptive-icon.png"
       },
-      "permissions": []
+      "permissions": ["android.permission.RECORD_AUDIO"]
     },
     "extra": {
       "apiBaseUrl": "https://api.aifmusic.top",

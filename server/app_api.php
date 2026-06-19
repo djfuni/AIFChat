@@ -15,6 +15,7 @@
  *   me              - 获取用户信息
  *   models          - 获取模型列表
  *   chat            - AI 聊天（支持 SSE 流式）
+ *   transcribe      - 语音识别（Whisper）
  *   health          - 健康检查
  *   feedback        - 用户反馈
  *   purchase_tokens - Token 充值（积分兑换）
@@ -413,6 +414,24 @@ try {
                 }
             } catch (\Throwable $e) {
                 error('AI 服务异常: ' . $e->getMessage());
+            }
+            break;
+
+        // ====================== 语音识别 ======================
+        case 'transcribe':
+            $userId = requireAuth();
+            $audioBase64 = param('audio_base64', '');
+            $mimeType = param('mime_type', 'audio/m4a');
+
+            if (empty($audioBase64)) {
+                error('缺少音频数据');
+            }
+
+            try {
+                $text = handleTranscribe($audioBase64, $mimeType);
+                success(['text' => $text]);
+            } catch (\Throwable $e) {
+                error('语音识别失败: ' . $e->getMessage());
             }
             break;
 

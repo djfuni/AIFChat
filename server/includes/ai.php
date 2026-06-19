@@ -163,6 +163,75 @@ function handleChat(array $messages, string $modelId, bool $deepThinking = false
 }
 
 /**
+ * 处理语音识别请求（转发到 OpenAI Whisper）
+ *
+ * @return string 识别出的文本
+ */
+function handleTranscribe(string $audioBase64, string $mimeType = 'audio/m4a'): string
+{
+    $apiBase = rtrim(config('AI_API_BASE', 'https://api.openai.com/v1'), '/');
+    $apiKey = config('AI_API_KEY', '');
+
+    $audioData = base64_decode($audioBase64, true);
+    if ($audioData === false) {
+        throw new \RuntimeException('音频数据格式异常');
+    }
+
+    $extension = match ($mimeType) {
+        'audio/mp4', 'audio/m4a', 'audio/x-m4a' => 'm4a',
+        'audio/mp3', 'audio/mpeg' => 'mp3',
+        'audio/wav', 'audio/x-wav' => 'wav',
+        'audio/webm' => 'webm',
+        'audio/ogg' => 'ogg',
+        'audio/flac' => 'flac',
+        default => 'm4a',
+    };
+    $tempFile = sys_get_temp_dir() . '/aif_transcribe_' . uniqid() . '.' . $extension;
+    file_put_contents($tempFile, $audioData);
+
+    try {
+        $ch = curl_init($apiBase . '/audio/transcriptions');
+        $postFields = [
+            'file' => new CURLFile($tempFile, $mimeType, 'audio.' . $extension),
+            'model' => 'whisper-1',
+        ];
+
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $apiKey,
+            ],
+            CURLOPT_POSTFIELDS => $postFields,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 60,
+            CURLOPT_CONNECTTIMEOUT => 15,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($error) {
+            throw new \RuntimeException('语音识别请求失败: ' . $error);
+        }
+
+        if ($httpCode !== 200) {
+            $body = json_decode($response, true);
+            $errorMsg = $body['error']['message'] ?? '语音识别服务返回错误 (' . $httpCode . ')';
+            throw new \RuntimeException($errorMsg);
+        }
+
+        $data = json_decode($response, true);
+        return $data['text'] ?? '';
+    } finally {
+        if (file_exists($tempFile)) {
+            unlink($tempFile);
+        }
+    }
+}
+
+/**
  * 处理流式聊天请求（SSE）
  * 直接输出 SSE 响应流
  */

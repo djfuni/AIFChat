@@ -196,6 +196,14 @@ export async function models(): Promise<{ default_model: string; models: ModelIt
   };
 }
 
+export async function transcribeAudio(audioBase64: string, mimeType: string): Promise<{ text: string }> {
+  const result = await authedRequest<never>('transcribe', {
+    audio_base64: audioBase64,
+    mime_type: mimeType,
+  });
+  return { text: result.text || '' };
+}
+
 type ApiMessage = {
   role: string;
   content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;

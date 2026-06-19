@@ -20,6 +20,9 @@ import {
 import Clipboard from '@react-native-clipboard/clipboard';
 import Markdown from 'react-native-markdown-display';
 import * as ImagePicker from 'expo-image-picker';
+import * as Speech from 'expo-speech';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
 import {
   ActivityIndicator,
   Appbar,
@@ -63,6 +66,7 @@ import {
   models,
   register,
   sendEmailCode,
+  transcribeAudio,
 } from './src/api';
 import type { ChatMessage, ModelItem, User } from './src/types';
 import {
@@ -574,12 +578,35 @@ function MessageBubble({ message, isLastInGroup, onRetry }: {
       >
         <Menu.Item leadingIcon="content-copy" title="复制文字" onPress={copyText} />
         <Menu.Item leadingIcon="share-variant" title="分享" onPress={shareText} />
+        {!mine && message.content ? (
+          <Menu.Item
+            leadingIcon="volume-high"
+            title="朗读"
+            onPress={() => {
+              setMenuVisible(false);
+              Speech.stop();
+              Speech.speak(message.content, { language: 'zh-CN', rate: 1.0 });
+            }}
+          />
+        ) : null}
       </Menu>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         {isLastInGroup ? (
           <Text variant="labelSmall" style={[styles.messageTime, mine ? styles.messageTimeRight : styles.messageTimeLeft]}>
             {formatTime(message.createdAt)}
           </Text>
+        ) : null}
+        {!mine && isLastInGroup && !message.isError && message.content ? (
+          <IconButton
+            icon="volume-high"
+            size={16}
+            iconColor={theme.colors.outline}
+            style={{ margin: 0 }}
+            onPress={() => {
+              Speech.stop();
+              Speech.speak(message.content, { language: 'zh-CN', rate: 1.0 });
+            }}
+          />
         ) : null}
         {!mine && message.isError && onRetry ? (
           <IconButton
@@ -1365,8 +1392,11 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [pendingImage, setPendingImage] = useState<{ base64: string; mimeType: string } | null>(null);
   const [customApiConfig, setCustomApiConfig] = useState<CustomApiConfig>(DEFAULT_CUSTOM_API_CONFIG);
+  const [isRecording, setIsRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const lastUserMessageRef = useRef<string>('');
+  const recordingRef = useRef<Audio.Recording | null>(null);
 
   // 角色扮演状态
   const [roleplayConfig, setRoleplayConfig] = useState<RoleplayConfig>({
@@ -1687,6 +1717,71 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
     }
   }, [notice]);
 
+  // 语音输入
+  const startRecording = useCallback(async () => {
+    try {
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        notice({ text: '需要麦克风权限才能使用语音输入', tone: 'error' });
+        return;
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      recordingRef.current = recording;
+      setIsRecording(true);
+    } catch (error) {
+      notice({ text: '启动录音失败', tone: 'error' });
+    }
+  }, [notice]);
+
+  const stopRecording = useCallback(async () => {
+    const recording = recordingRef.current;
+    if (!recording) return;
+    setIsRecording(false);
+    try {
+      await recording.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      const uri = recording.getURI();
+      recordingRef.current = null;
+      if (!uri) return;
+
+      setTranscribing(true);
+      try {
+        const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+        const info = await FileSystem.getInfoAsync(uri);
+        const mimeType = info.exists && 'size' in info && info.size > 0
+          ? (uri.endsWith('.m4a') ? 'audio/m4a' : uri.endsWith('.mp3') ? 'audio/mpeg' : 'audio/m4a')
+          : 'audio/m4a';
+        const { text } = await transcribeAudio(base64, mimeType);
+        if (text.trim()) {
+          setMessageText((prev) => (prev ? prev + ' ' : '') + text.trim());
+        } else {
+          notice({ text: '未能识别到语音内容，请重试' });
+        }
+      } catch (error) {
+        notice({ text: asErrorMessage(error), tone: 'error' });
+      } finally {
+        setTranscribing(false);
+      }
+    } catch (error) {
+      notice({ text: '停止录音失败', tone: 'error' });
+      setIsRecording(false);
+      setTranscribing(false);
+    }
+  }, [notice]);
+
+  const toggleRecording = useCallback(async () => {
+    if (transcribing) return;
+    if (isRecording) {
+      await stopRecording();
+    } else {
+      await startRecording();
+    }
+  }, [isRecording, transcribing, startRecording, stopRecording]);
+
   // 子屏幕渲染
   if (subScreen === 'profile') {
     return (
@@ -1918,6 +2013,12 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
               </View>
             </View>
           ) : null}
+          {isRecording ? (
+            <View style={styles.recordingBanner}>
+              <View style={styles.recordingDot} />
+              <Text variant="labelMedium" style={styles.recordingText}>正在录音，点击麦克风按钮结束</Text>
+            </View>
+          ) : null}
           <View style={styles.composerRow}>
             <IconButton
               icon="image-plus"
@@ -1926,6 +2027,18 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
               iconColor={theme.colors.onSurfaceVariant}
               size={22}
               onPress={pickImage}
+              disabled={isRecording || transcribing}
+              style={{ marginBottom: 4 }}
+            />
+            <IconButton
+              icon={isRecording ? 'stop' : transcribing ? 'dots-horizontal' : 'microphone'}
+              mode="contained-tonal"
+              containerColor={isRecording ? theme.colors.errorContainer : theme.colors.surfaceVariant}
+              iconColor={isRecording ? theme.colors.error : transcribing ? theme.colors.outline : theme.colors.onSurfaceVariant}
+              size={22}
+              onPress={toggleRecording}
+              disabled={transcribing}
+              loading={transcribing}
               style={{ marginBottom: 4 }}
             />
             <TextInput
@@ -1944,6 +2057,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
               multiline
               maxLength={4000}
               style={styles.composerInput}
+              disabled={isRecording || transcribing}
             />
             <IconButton
               icon="send"
@@ -1952,7 +2066,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
               iconColor={canSend ? theme.colors.onPrimary : theme.colors.outline}
               size={28}
               onPress={submit}
-              disabled={!canSend && !pendingImage}
+              disabled={(!canSend && !pendingImage) || isRecording || transcribing}
               style={styles.sendButton}
             />
           </View>
@@ -2180,6 +2294,11 @@ const styles = StyleSheet.create({
   composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
   composerInput: { flex: 1, maxHeight: 140, backgroundColor: theme.colors.surface },
   sendButton: { marginBottom: 4, borderRadius: 24, marginHorizontal: 0 },
+
+  // 录音状态
+  recordingBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, marginLeft: 4 },
+  recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.error },
+  recordingText: { color: theme.colors.error, fontWeight: '700' },
 
   // 图片预览
   imagePreviewRow: { flexDirection: 'row', marginBottom: 8, marginLeft: 44 },

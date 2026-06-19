@@ -52,6 +52,8 @@ export type ApiResult<T = unknown> = {
   models?: ModelItem[];
   message?: string;
   usage?: Record<string, unknown>;
+  /** 语音识别等接口返回的文本 */
+  text?: string;
   // 验证码字段（顶级）
   captcha_id?: string;
   svg?: string;
