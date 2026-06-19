@@ -14,9 +14,17 @@ for (const file of [appJsonPath, easJsonPath]) {
 }
 
 const app = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
-const pkg = app?.expo?.android?.package;
+let pkg = app?.expo?.android?.package;
+if (!pkg) {
+  const buildGradlePath = path.join(root, 'android', 'app', 'build.gradle');
+  if (fs.existsSync(buildGradlePath)) {
+    const buildGradle = fs.readFileSync(buildGradlePath, 'utf8');
+    const match = buildGradle.match(/applicationId\s+'([^']+)'/);
+    if (match) pkg = match[1];
+  }
+}
 if (!pkg || pkg === 'top.aifmusic.chat') {
-  console.warn('Warning: android.package is still the default value: top.aifmusic.chat');
+  console.warn('Warning: android.applicationId is still the default value: top.aifmusic.chat');
   console.warn('Before publishing, change it to your own reverse-domain package name, for example com.yourcompany.aifchat.');
 }
 

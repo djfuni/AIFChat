@@ -1600,7 +1600,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
   const [subScreen, setSubScreen] = useState<ChatSubScreen>('chat');
   const setSubScreenAnimated = useCallback((next: ChatSubScreen) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setSubScreenAnimated(next);
+    setSubScreen(next);
   }, []);
   const [convoList, setConvoList] = useState<ConversationMeta[]>([]);
   const [currentConvoId, setCurrentConvoId] = useState<string | null>(null);
@@ -1699,6 +1699,18 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
   useEffect(() => {
     scrollToBottom();
   }, [messagesState, sending, scrollToBottom]);
+
+  // 组件卸载时停止录音和语音朗读
+  useEffect(() => {
+    return () => {
+      const recording = recordingRef.current;
+      if (recording) {
+        recording.stopAndUnloadAsync().catch(() => {});
+        recordingRef.current = null;
+      }
+      Speech.stop();
+    };
+  }, []);
 
   // 持久化消息
   const persistMessages = useCallback(async (convoId: string, msgs: ChatMessage[], model: string) => {
@@ -1799,35 +1811,31 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
     };
 
     const onError = async (error: Error) => {
-      // 如果自定义 API 失败且没有启用，直接报错
-      if (!usingCustomApi) {
-        setSending(false);
-        notice({ text: error.message || '请求失败', tone: 'error' });
-        const errorMsg: ChatMessage = {
-          id: assistantId,
-          role: 'assistant',
-          content: '这次请求没有成功。你可以点击重试按钮重新发送，或切换模型后再试。',
-          createdAt: Date.now(),
-          isError: true,
-        };
-        const finalMessages = [...nextMessages, errorMsg].slice(-100);
-        setMessagesState(finalMessages);
-
-        let convoId = currentConvoId;
-        if (!convoId) {
-          convoId = await createConversation(currentModel);
-          setCurrentConvoId(convoId);
-        }
-        await persistMessages(convoId, finalMessages, currentModel);
-        return;
-      }
-
-      // 自定义 API 失败，自动回退到内置 API
       setSending(false);
+      notice({ text: error.message || '请求失败', tone: 'error' });
+      const errorMsg: ChatMessage = {
+        id: assistantId,
+        role: 'assistant',
+        content: '这次请求没有成功。你可以点击重试按钮重新发送，或切换模型后再试。',
+        createdAt: Date.now(),
+        isError: true,
+      };
+      const finalMessages = [...nextMessages, errorMsg].slice(-100);
+      setMessagesState(finalMessages);
+
+      let convoId = currentConvoId;
+      if (!convoId) {
+        convoId = await createConversation(currentModel);
+        setCurrentConvoId(convoId);
+      }
+      await persistMessages(convoId, finalMessages, currentModel);
+    };
+
+    const onCustomApiError = async (error: Error) => {
       notice({ text: `自定义 API 请求失败：${error.message}。已自动回退到内置 API`, tone: 'error' });
       // 移除错误占位
       setMessagesState([...nextMessages, { ...assistantMessage, content: '' }]);
-      // 用内置 API 重试
+      // 用内置 API 重试，失败时不再回退
       chatStream(
         nextMessages,
         currentModel,
@@ -1840,7 +1848,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
     };
 
     if (usingCustomApi) {
-      openaiChatStream(nextMessages, customApiConfig, onChunk, onDone, onError);
+      openaiChatStream(nextMessages, customApiConfig, onChunk, onDone, onCustomApiError);
     } else {
       chatStream(
         nextMessages,

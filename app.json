@@ -2,29 +2,8 @@
   "expo": {
     "name": "AIF Chat",
     "slug": "aif-chat-mobile",
-    "scheme": "aifchat",
     "version": "1.8.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FFFBFE"
-    },
-    "ios": {
-      "supportsTablet": false,
-      "bundleIdentifier": "top.aifmusic.chat"
-    },
-    "android": {
-      "package": "top.aifmusic.chat",
-      "adaptiveIcon": {
-        "backgroundColor": "#FFFBFE",
-        "foregroundImage": "./assets/adaptive-icon.png"
-      },
-      "permissions": ["android.permission.RECORD_AUDIO"]
-    },
     "extra": {
       "apiBaseUrl": "https://api.aifmusic.top",
       "eas": {

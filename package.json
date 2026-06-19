@@ -23,13 +23,13 @@
     "@react-native-clipboard/clipboard": "^1.16.3",
     "expo": "^52.0.0",
     "expo-asset": "~11.0.5",
-    "expo-av": "^16.0.8",
+    "expo-av": "~15.0.2",
     "expo-constants": "~17.0.8",
-    "expo-file-system": "^56.0.8",
+    "expo-file-system": "~18.0.12",
     "expo-font": "~13.0.4",
     "expo-image-picker": "~16.0.6",
     "expo-secure-store": "~14.0.1",
-    "expo-speech": "^56.0.3",
+    "expo-speech": "~13.0.1",
     "expo-status-bar": "~2.0.0",
     "react": "18.3.1",
     "react-native": "^0.76.9",
@@ -41,5 +41,12 @@
   "devDependencies": {
     "@types/react": "~18.3.12",
     "typescript": "^5.6.3"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": ["expo-av", "react-native-markdown-display"]
+      }
+    }
   }
 }
