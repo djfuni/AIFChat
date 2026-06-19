@@ -16,7 +16,9 @@ import {
   TouchableWithoutFeedback,
   View,
   Image,
+  useColorScheme,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Clipboard from '@react-native-clipboard/clipboard';
 import Markdown from 'react-native-markdown-display';
 import * as ImagePicker from 'expo-image-picker';
@@ -33,6 +35,7 @@ import {
   IconButton,
   List,
   MD3LightTheme,
+  MD3DarkTheme,
   Menu,
   PaperProvider,
   ProgressBar,
@@ -95,12 +98,59 @@ import {
 } from './src/customApi';
 import { openaiChatStream, testApiConnection } from './src/openaiStream';
 
-// ==================== 字体主题 ====================
+// ==================== 主题系统 ====================
 
-const theme = {
-  ...MD3LightTheme,
-  roundness: 28,
-  fonts: configureFonts({
+type ThemeMode = 'light' | 'dark' | 'system';
+
+type AppTheme = typeof MD3LightTheme & {
+  colors: {
+    primary: string;
+    onPrimary: string;
+    primaryContainer: string;
+    onPrimaryContainer: string;
+    secondary: string;
+    onSecondary: string;
+    secondaryContainer: string;
+    onSecondaryContainer: string;
+    tertiary: string;
+    tertiaryContainer: string;
+    onTertiaryContainer: string;
+    surface: string;
+    surfaceVariant: string;
+    onSurface: string;
+    onSurfaceVariant: string;
+    outline: string;
+    background: string;
+    error: string;
+    elevation: {
+      level0: string;
+      level1: string;
+      level2: string;
+      level3: string;
+      level4: string;
+      level5: string;
+    };
+  };
+};
+
+const THEME_MODE_KEY = 'aif_theme_mode';
+
+async function loadThemeMode(): Promise<ThemeMode> {
+  try {
+    const value = await AsyncStorage.getItem(THEME_MODE_KEY);
+    if (value === 'light' || value === 'dark' || value === 'system') return value;
+  } catch { /* ignore */ }
+  return 'system';
+}
+
+async function saveThemeMode(mode: ThemeMode): Promise<void> {
+  try {
+    await AsyncStorage.setItem(THEME_MODE_KEY, mode);
+  } catch { /* ignore */ }
+}
+
+function configureAppFonts() {
+  return configureFonts({
     config: {
       displayLarge: { fontFamily: 'MPLUSRounded1c_800ExtraBold', fontWeight: '800', fontSize: 57, lineHeight: 64, letterSpacing: -0.25 },
       displayMedium: { fontFamily: 'MPLUSRounded1c_700Bold', fontWeight: '700', fontSize: 45, lineHeight: 52, letterSpacing: 0 },
@@ -118,67 +168,162 @@ const theme = {
       labelMedium: { fontFamily: 'MPLUSRounded1c_700Bold', fontWeight: '700', fontSize: 12, lineHeight: 16, letterSpacing: 0.5 },
       labelSmall: { fontFamily: 'MPLUSRounded1c_400Regular', fontWeight: '400', fontSize: 11, lineHeight: 16, letterSpacing: 0.5 },
     },
-  }),
-  colors: {
-    ...MD3LightTheme.colors,
-    // 清新天蓝二次元主题
-    primary: '#4A9BD9',
-    onPrimary: '#FFFFFF',
-    primaryContainer: '#D6E8F7',
-    onPrimaryContainer: '#041E33',
-    secondary: '#5B8DB5',
-    onSecondary: '#FFFFFF',
-    secondaryContainer: '#D1E4F0',
-    onSecondaryContainer: '#071D2B',
-    tertiary: '#B06D8E',
-    tertiaryContainer: '#FFD9E8',
-    onTertiaryContainer: '#3A0025',
-    surface: '#F8FCFF',
-    surfaceVariant: '#E0EAF1',
-    onSurface: '#1A1C1E',
-    onSurfaceVariant: '#44474F',
-    outline: '#74777F',
-    background: '#F8FCFF',
-    error: '#BA1A1A',
-    elevation: {
-      level0: 'transparent',
-      level1: '#F0F6FD',
-      level2: '#EBF1FA',
-      level3: '#E5ECF6',
-      level4: '#E3EAF5',
-      level5: '#E0E7F2',
+  });
+}
+
+function createAppTheme(dark: boolean): AppTheme {
+  const base = dark ? MD3DarkTheme : MD3LightTheme;
+  const fonts = configureAppFonts();
+  if (dark) {
+    return {
+      ...base,
+      roundness: 28,
+      fonts,
+      colors: {
+        ...base.colors,
+        // 深蓝夜空二次元暗色主题
+        primary: '#6AB2E8',
+        onPrimary: '#003354',
+        primaryContainer: '#004B73',
+        onPrimaryContainer: '#C9E6FF',
+        secondary: '#88B8D8',
+        onSecondary: '#002538',
+        secondaryContainer: '#1A3A4D',
+        onSecondaryContainer: '#C4E0F5',
+        tertiary: '#E8A4C0',
+        onTertiaryContainer: '#4D0F2A',
+        tertiaryContainer: '#662A42',
+        surface: '#111418',
+        surfaceVariant: '#1D252C',
+        onSurface: '#E1E2E8',
+        onSurfaceVariant: '#9AA3AD',
+        outline: '#8E9199',
+        background: '#111418',
+        error: '#FFB4AB',
+        elevation: {
+          level0: 'transparent',
+          level1: '#181D23',
+          level2: '#1E242A',
+          level3: '#242B31',
+          level4: '#272F36',
+          level5: '#2B333B',
+        },
+      },
+    } as AppTheme;
+  }
+  return {
+    ...base,
+    roundness: 28,
+    fonts,
+    colors: {
+      ...base.colors,
+      // 清新天蓝二次元主题
+      primary: '#4A9BD9',
+      onPrimary: '#FFFFFF',
+      primaryContainer: '#D6E8F7',
+      onPrimaryContainer: '#041E33',
+      secondary: '#5B8DB5',
+      onSecondary: '#FFFFFF',
+      secondaryContainer: '#D1E4F0',
+      onSecondaryContainer: '#071D2B',
+      tertiary: '#B06D8E',
+      tertiaryContainer: '#FFD9E8',
+      onTertiaryContainer: '#3A0025',
+      surface: '#F8FCFF',
+      surfaceVariant: '#E0EAF1',
+      onSurface: '#1A1C1E',
+      onSurfaceVariant: '#44474F',
+      outline: '#74777F',
+      background: '#F8FCFF',
+      error: '#BA1A1A',
+      elevation: {
+        level0: 'transparent',
+        level1: '#F0F6FD',
+        level2: '#EBF1FA',
+        level3: '#E5ECF6',
+        level4: '#E3EAF5',
+        level5: '#E0E7F2',
+      },
     },
-  },
-};
+  } as AppTheme;
+}
+
+const AppThemeContext = React.createContext<{
+  theme: AppTheme;
+  mode: ThemeMode;
+  setMode: (mode: ThemeMode) => void;
+  isDark: boolean;
+}>({
+  theme: createAppTheme(false),
+  mode: 'system',
+  setMode: () => {},
+  isDark: false,
+});
+
+function AppThemeProvider({ children }: { children: React.ReactNode }) {
+  const systemColorScheme = useColorScheme();
+  const [mode, setModeState] = useState<ThemeMode>('system');
+
+  useEffect(() => {
+    loadThemeMode().then(setModeState).catch(() => {});
+  }, []);
+
+  const setMode = useCallback((next: ThemeMode) => {
+    setModeState(next);
+    saveThemeMode(next).catch(() => {});
+  }, []);
+
+  const isDark = useMemo(() => {
+    if (mode === 'system') return systemColorScheme === 'dark';
+    return mode === 'dark';
+  }, [mode, systemColorScheme]);
+
+  const theme = useMemo(() => createAppTheme(isDark), [isDark]);
+
+  return (
+    <AppThemeContext.Provider value={{ theme, mode, setMode, isDark }}>
+      {children}
+    </AppThemeContext.Provider>
+  );
+}
+
+function useAppTheme() {
+  return React.useContext(AppThemeContext);
+}
 
 // ==================== Markdown 样式 ====================
 
-const markdownStyles = StyleSheet.create({
-  body: { color: theme.colors.onSurface, fontSize: 15, lineHeight: 22 },
-  heading1: { fontSize: 22, fontWeight: '700', marginTop: 8, marginBottom: 4, color: theme.colors.onSurface },
-  heading2: { fontSize: 20, fontWeight: '700', marginTop: 6, marginBottom: 4, color: theme.colors.onSurface },
-  heading3: { fontSize: 18, fontWeight: '700', marginTop: 4, marginBottom: 2, color: theme.colors.onSurface },
-  heading4: { fontSize: 16, fontWeight: '700', marginTop: 4, marginBottom: 2, color: theme.colors.onSurface },
-  code_inline: { backgroundColor: theme.colors.surfaceVariant, color: theme.colors.error, fontFamily: 'monospace', fontSize: 13, paddingHorizontal: 4, borderRadius: 4 },
-  code_block: { backgroundColor: '#1E1E2E', color: '#CDD6F4', fontFamily: 'monospace', fontSize: 13, padding: 12, borderRadius: 12, marginVertical: 6 },
-  fence: { backgroundColor: '#1E1E2E', padding: 12, borderRadius: 12, marginVertical: 6 },
-  blockquote: { borderLeftWidth: 3, borderLeftColor: theme.colors.primary, paddingLeft: 12, marginVertical: 6, opacity: 0.85 },
-  link: { color: theme.colors.primary, textDecorationLine: 'underline' },
-  list_item: { marginVertical: 2 },
-  bullet_list: { paddingLeft: 8 },
-  ordered_list: { paddingLeft: 8 },
-  hr: { marginVertical: 8, backgroundColor: theme.colors.outline, height: StyleSheet.hairlineWidth },
-  paragraph: { marginVertical: 4 },
-});
+function createMarkdownStyles(theme: AppTheme) {
+  return StyleSheet.create({
+    body: { color: theme.colors.onSurface, fontSize: 15, lineHeight: 22 },
+    heading1: { fontSize: 22, fontWeight: '700', marginTop: 8, marginBottom: 4, color: theme.colors.onSurface },
+    heading2: { fontSize: 20, fontWeight: '700', marginTop: 6, marginBottom: 4, color: theme.colors.onSurface },
+    heading3: { fontSize: 18, fontWeight: '700', marginTop: 4, marginBottom: 2, color: theme.colors.onSurface },
+    heading4: { fontSize: 16, fontWeight: '700', marginTop: 4, marginBottom: 2, color: theme.colors.onSurface },
+    code_inline: { backgroundColor: theme.colors.surfaceVariant, color: theme.colors.error, fontFamily: 'monospace', fontSize: 13, paddingHorizontal: 4, borderRadius: 4 },
+    code_block: { backgroundColor: '#1E1E2E', color: '#CDD6F4', fontFamily: 'monospace', fontSize: 13, padding: 12, borderRadius: 12, marginVertical: 6 },
+    fence: { backgroundColor: '#1E1E2E', padding: 12, borderRadius: 12, marginVertical: 6 },
+    blockquote: { borderLeftWidth: 3, borderLeftColor: theme.colors.primary, paddingLeft: 12, marginVertical: 6, opacity: 0.85 },
+    link: { color: theme.colors.primary, textDecorationLine: 'underline' },
+    list_item: { marginVertical: 2 },
+    bullet_list: { paddingLeft: 8 },
+    ordered_list: { paddingLeft: 8 },
+    hr: { marginVertical: 8, backgroundColor: theme.colors.outline, height: StyleSheet.hairlineWidth },
+    paragraph: { marginVertical: 4 },
+  });
+}
 
-const markdownStylesUser = {
-  ...markdownStyles,
-  body: { color: theme.colors.onPrimary, fontSize: 15, lineHeight: 22 },
-  link: { color: theme.colors.onPrimary, textDecorationLine: 'underline' },
-  code_inline: { backgroundColor: 'rgba(255,255,255,0.2)', color: theme.colors.onPrimary, fontFamily: 'monospace', fontSize: 13, paddingHorizontal: 4, borderRadius: 4 },
-  code_block: { backgroundColor: '#1E1E2E', color: '#CDD6F4', fontFamily: 'monospace', fontSize: 13, padding: 12, borderRadius: 12, marginVertical: 6 },
-  fence: { backgroundColor: '#1E1E2E', padding: 12, borderRadius: 12, marginVertical: 6 },
-};
+function createMarkdownStylesUser(theme: AppTheme) {
+  const base = createMarkdownStyles(theme);
+  return {
+    ...base,
+    body: { color: theme.colors.onPrimary, fontSize: 15, lineHeight: 22 },
+    link: { color: theme.colors.onPrimary, textDecorationLine: 'underline' },
+    code_inline: { backgroundColor: 'rgba(255,255,255,0.2)', color: theme.colors.onPrimary, fontFamily: 'monospace', fontSize: 13, paddingHorizontal: 4, borderRadius: 4 },
+    code_block: { backgroundColor: '#1E1E2E', color: '#CDD6F4', fontFamily: 'monospace', fontSize: 13, padding: 12, borderRadius: 12, marginVertical: 6 },
+    fence: { backgroundColor: '#1E1E2E', padding: 12, borderRadius: 12, marginVertical: 6 },
+  };
+}
 
 // ==================== 短提示 ====================
 
@@ -234,6 +379,7 @@ function welcomeMessage(user: User): ChatMessage {
 // ==================== 打字脉冲动画组件 ====================
 
 function TypingDots({ deepThinking }: { deepThinking: boolean }) {
+  const { theme } = useAppTheme();
   const [dot1] = useState(() => new Animated.Value(0));
   const [dot2] = useState(() => new Animated.Value(0));
   const [dot3] = useState(() => new Animated.Value(0));
@@ -290,6 +436,7 @@ function TypingDots({ deepThinking }: { deepThinking: boolean }) {
 // ==================== HeroHeader ====================
 
 function HeroHeader() {
+  const styles = useAppStyles();
   return (
     <View style={styles.hero}>
       <Surface mode="flat" style={styles.logoBadge}>
@@ -309,6 +456,8 @@ function LoginScreen({ onLoggedIn, onRegister, notice }: {
   onRegister: () => void;
   notice: (notice: Notice) => void;
 }) {
+  const { theme } = useAppTheme();
+  const styles = useAppStyles();
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [secure, setSecure] = useState(true);
@@ -387,6 +536,8 @@ function RegisterScreen({ onRegistered, onBack, notice }: {
   onBack: () => void;
   notice: (notice: Notice) => void;
 }) {
+  const { theme } = useAppTheme();
+  const styles = useAppStyles();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -532,6 +683,10 @@ function MessageBubble({ message, isLastInGroup, onRetry }: {
   isLastInGroup: boolean;
   onRetry?: () => void;
 }) {
+  const { theme } = useAppTheme();
+  const styles = useAppStyles();
+  const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
+  const markdownStylesUser = useMemo(() => createMarkdownStylesUser(theme), [theme]);
   const mine = message.role === 'user';
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -636,6 +791,28 @@ function MessageBubble({ message, isLastInGroup, onRetry }: {
   );
 }
 
+function AnimatedMessageBubble(props: {
+  message: ChatMessage;
+  isLastInGroup: boolean;
+  onRetry?: () => void;
+}) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(8)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 260, useNativeDriver: true }),
+    ]).start();
+  }, [opacity, translateY]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      <MessageBubble {...props} />
+    </Animated.View>
+  );
+}
+
 // ==================== 模型选择器 ====================
 
 function ModelPicker({ currentModel, modelList, onChange }: {
@@ -643,6 +820,7 @@ function ModelPicker({ currentModel, modelList, onChange }: {
   modelList: ModelItem[];
   onChange: (id: string) => void;
 }) {
+  const { theme } = useAppTheme();
   const [visible, setVisible] = useState(false);
 
   const allowedModels = useMemo(() => modelList.filter((m) => isModelAllowed(m.id)), [modelList]);
@@ -726,6 +904,8 @@ function RoleplayConfigScreen({
   onSave: (config: RoleplayConfig) => void;
   onBack: () => void;
 }) {
+  const { theme } = useAppTheme();
+  const styles = useAppStyles();
   const [enabled, setEnabled] = useState(config.enabled);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(config.presetId);
   const [customPrompt, setCustomPrompt] = useState(config.customPrompt);
@@ -951,6 +1131,8 @@ function SettingsScreen({
   onBack: () => void;
   notice: (notice: Notice) => void;
 }) {
+  const { theme, mode, setMode } = useAppTheme();
+  const styles = useAppStyles();
   const [enabled, setEnabled] = useState(config.enabled);
   const [baseUrl, setBaseUrl] = useState(config.baseUrl);
   const [apiKey, setApiKey] = useState(config.apiKey);
@@ -1000,6 +1182,31 @@ function SettingsScreen({
         <Appbar.Content title="自定义 API" />
       </Appbar.Header>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}>
+        {/* 主题模式 */}
+        <Surface mode="elevated" style={{ borderRadius: 20, backgroundColor: theme.colors.surface, padding: 16, gap: 12 }}>
+          <Text variant="titleMedium" style={{ fontWeight: '700' }}>
+            🎨 主题模式
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {([
+              { value: 'light', label: '浅色', icon: 'white-balance-sunny' },
+              { value: 'dark', label: '深色', icon: 'weather-night' },
+              { value: 'system', label: '跟随系统', icon: 'theme-light-dark' },
+            ] as { value: ThemeMode; label: string; icon: string }[]).map((item) => (
+              <Button
+                key={item.value}
+                mode={mode === item.value ? 'contained' : 'outlined'}
+                icon={item.icon}
+                onPress={() => setMode(item.value)}
+                style={{ flex: 1, borderRadius: 16 }}
+                compact
+              >
+                {item.label}
+              </Button>
+            ))}
+          </View>
+        </Surface>
+
         {/* 启用开关 */}
         <Surface mode="elevated" style={{ borderRadius: 20, backgroundColor: theme.colors.surface, padding: 16 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1127,6 +1334,8 @@ function PromptSquareScreen({ onBack, onApply, notice }: {
   onApply: (config: RoleplayConfig) => void;
   notice: (notice: Notice) => void;
 }) {
+  const { theme } = useAppTheme();
+  const styles = useAppStyles();
   const animePresets = useMemo(() => BUILTIN_PRESETS.filter((p) => p.category === 'anime'), []);
   const functionalPresets = useMemo(() => BUILTIN_PRESETS.filter((p) => p.category === 'functional'), []);
   const [filter, setFilter] = useState<'all' | 'anime' | 'functional'>('all');
@@ -1212,6 +1421,8 @@ function ProfileScreen({ user, onBack, onSignOut, onRefreshUser }: {
   onSignOut: () => void;
   onRefreshUser: () => Promise<User | null>;
 }) {
+  const { theme } = useAppTheme();
+  const styles = useAppStyles();
   const [refreshing, setRefreshing] = useState(false);
   const [currentUser, setCurrentUser] = useState(user);
 
@@ -1379,12 +1590,18 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
   onUserUpdated: (user: User) => void;
   notice: (notice: Notice) => void;
 }) {
+  const { theme } = useAppTheme();
+  const styles = useAppStyles();
   const [messageText, setMessageText] = useState('');
   const [messagesState, setMessagesState] = useState<ChatMessage[]>([]);
   const [modelList, setModelList] = useState<ModelItem[]>([]);
   const [currentModel, setCurrentModel] = useState('lite');
   const [sending, setSending] = useState(false);
   const [subScreen, setSubScreen] = useState<ChatSubScreen>('chat');
+  const setSubScreenAnimated = useCallback((next: ChatSubScreen) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSubScreenAnimated(next);
+  }, []);
   const [convoList, setConvoList] = useState<ConversationMeta[]>([]);
   const [currentConvoId, setCurrentConvoId] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -1651,7 +1868,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
     setMessagesState([welcomeMessage(user)]);
     setCurrentConvoId(null);
     setPendingImage(null);
-    setSubScreen('chat');
+    setSubScreenAnimated('chat');
   }, [user]);
 
   const switchToConvo = useCallback(async (convoId: string) => {
@@ -1660,7 +1877,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
     await setCurrentConvoId(convoId);
     setMessagesState(msgs.length > 0 ? msgs : [welcomeMessage(user)]);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setSubScreen('chat');
+    setSubScreenAnimated('chat');
   }, [user]);
 
   const removeConvo = useCallback(async (convoId: string) => {
@@ -1787,7 +2004,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
     return (
       <ProfileScreen
         user={user}
-        onBack={() => setSubScreen('chat')}
+        onBack={() => setSubScreenAnimated('chat')}
         onSignOut={signOut}
         onRefreshUser={refreshUserProfile}
       />
@@ -1799,7 +2016,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
       <RoleplayConfigScreen
         config={roleplayConfig}
         onSave={handleSaveRoleplay}
-        onBack={() => setSubScreen('chat')}
+        onBack={() => setSubScreenAnimated('chat')}
       />
     );
   }
@@ -1813,7 +2030,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
           await saveCustomApiConfig(newConfig);
           notice({ text: newConfig.enabled ? '🔌 自定义 API 已启用' : '已关闭自定义 API' });
         }}
-        onBack={() => setSubScreen('chat')}
+        onBack={() => setSubScreenAnimated('chat')}
         notice={notice}
       />
     );
@@ -1822,7 +2039,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
   if (subScreen === 'prompts') {
     return (
       <PromptSquareScreen
-        onBack={() => setSubScreen('chat')}
+        onBack={() => setSubScreenAnimated('chat')}
         onApply={(config) => {
           setRoleplayConfig(config);
           saveRoleplayConfig(config);
@@ -1836,7 +2053,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
     return (
       <SafeAreaView style={styles.flex} edges={['bottom']}>
         <Appbar.Header elevated mode="center-aligned">
-          <Appbar.BackAction onPress={() => setSubScreen('chat')} />
+          <Appbar.BackAction onPress={() => setSubScreenAnimated('chat')} />
           <Appbar.Content title="对话历史" />
           <Appbar.Action icon="plus" onPress={startNewChat} />
         </Appbar.Header>
@@ -1846,10 +2063,12 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
           contentContainerStyle={convoList.length === 0 ? { flexGrow: 1 } : undefined}
           ListEmptyComponent={
             <View style={styles.emptyHistoryInner}>
-              <IconButton icon="chat-outline" size={56} iconColor={theme.colors.outline} />
-              <Text variant="bodyLarge" style={styles.muted}>还没有聊天记录呢</Text>
-              <Text variant="bodySmall" style={[styles.muted, { marginBottom: 8 }]}>开始一段新对话吧 ✨</Text>
-              <Button mode="contained" onPress={startNewChat} style={{ borderRadius: 28 }}>开始新对话</Button>
+              <Surface mode="flat" style={styles.emptyHistoryIconCircle}>
+                <Text variant="headlineMedium" style={styles.emptyHistoryIcon}>💬</Text>
+              </Surface>
+              <Text variant="titleMedium" style={[styles.sectionTitle, { marginTop: 16 }]}>还没有聊天记录</Text>
+              <Text variant="bodyMedium" style={[styles.muted, { textAlign: 'center', marginTop: 4, marginBottom: 16 }]}>点击下方按钮，开始你的第一段 AI 对话吧 ✨</Text>
+              <Button mode="contained" icon="chat-plus" onPress={startNewChat} style={{ borderRadius: 28 }}>开始新对话</Button>
             </View>
           }
           renderItem={({ item }) => (
@@ -1894,7 +2113,7 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
         <Appbar.Action
           icon="menu"
           iconColor={theme.colors.onSurface}
-          onPress={() => setSubScreen('history')}
+          onPress={() => setSubScreenAnimated('history')}
         />
         <Appbar.Content title="AIF Chat" subtitle={roleplayLabel || APP_COPY.noTokenHint} />
         <Menu
@@ -1909,15 +2128,15 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
           }
         >
           <Menu.Item leadingIcon="plus" title="新对话" onPress={() => { setMenuVisible(false); startNewChat(); }} />
-          <Menu.Item leadingIcon="history" title="对话历史" onPress={() => { setMenuVisible(false); setSubScreen('history'); }} />
+          <Menu.Item leadingIcon="history" title="对话历史" onPress={() => { setMenuVisible(false); setSubScreenAnimated('history'); }} />
           <Menu.Item
             leadingIcon={roleplayConfig.enabled ? 'theater' : 'theater'}
             title={roleplayConfig.enabled ? '角色扮演设置' : '角色扮演'}
-            onPress={() => { setMenuVisible(false); setSubScreen('roleplay'); }}
+            onPress={() => { setMenuVisible(false); setSubScreenAnimated('roleplay'); }}
           />
-          <Menu.Item leadingIcon="account-circle" title="个人主页" onPress={() => { setMenuVisible(false); setSubScreen('profile'); }} />
-          <Menu.Item leadingIcon="tune" title="自定义 API" onPress={() => { setMenuVisible(false); setSubScreen('settings'); }} />
-          <Menu.Item leadingIcon="message-text-outline" title="提示词广场" onPress={() => { setMenuVisible(false); setSubScreen('prompts'); }} />
+          <Menu.Item leadingIcon="account-circle" title="个人主页" onPress={() => { setMenuVisible(false); setSubScreenAnimated('profile'); }} />
+          <Menu.Item leadingIcon="tune" title="自定义 API" onPress={() => { setMenuVisible(false); setSubScreenAnimated('settings'); }} />
+          <Menu.Item leadingIcon="message-text-outline" title="提示词广场" onPress={() => { setMenuVisible(false); setSubScreenAnimated('prompts'); }} />
           <Divider />
           <Menu.Item leadingIcon="qqchat" title="加入官方 QQ 群" onPress={() => { setMenuVisible(false); Linking.openURL(QQ_GROUP_URL); }} />
           <Menu.Item leadingIcon="logout" title="退出登录" onPress={() => { setMenuVisible(false); signOut(); }} />
@@ -1975,8 +2194,29 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
             </Surface>
           ) : null
         }
+        ListEmptyComponent={
+          <View style={styles.emptyChatInner}>
+            <Surface mode="flat" style={styles.emptyChatIconCircle}>
+              <Text variant="headlineMedium" style={styles.emptyChatIcon}>✨</Text>
+            </Surface>
+            <Text variant="titleMedium" style={[styles.sectionTitle, { textAlign: 'center', marginTop: 12 }]}>你好，{user.nickname || user.username}！</Text>
+            <Text variant="bodyMedium" style={[styles.muted, { textAlign: 'center', marginTop: 4 }]}>有任何问题都可以问我 ~</Text>
+            <View style={styles.emptyChatTips}>
+              {['介绍一下你自己', '帮我写一段二次元文案', '今天的天气怎么样'].map((tip) => (
+                <Chip
+                  key={tip}
+                  style={styles.emptyChatTipChip}
+                  textStyle={{ color: theme.colors.onSurfaceVariant }}
+                  onPress={() => setMessageText(tip)}
+                >
+                  {tip}
+                </Chip>
+              ))}
+            </View>
+          </View>
+        }
         renderItem={({ item, index }) => (
-          <MessageBubble
+          <AnimatedMessageBubble
             message={item}
             isLastInGroup={isLastInGroup(index)}
             onRetry={item.role === 'assistant' && item.isError ? retryLastMessage : undefined}
@@ -2079,6 +2319,8 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
 // ==================== Root ====================
 
 function Root() {
+  const { theme } = useAppTheme();
+  const styles = useAppStyles();
   const [screen, setScreen] = useState<Screen>('boot');
   const [user, setUser] = useState<User | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -2086,24 +2328,29 @@ function Root() {
 
   const showNotice = useCallback((next: Notice) => setNotice(next), []);
 
+  const setScreenAnimated = useCallback((next: Screen) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setScreen(next);
+  }, []);
+
   const boot = useCallback(async () => {
     let mounted = true;
-    setScreen('boot');
+    setScreenAnimated('boot');
     setBootError('');
     try {
       const token = await getAccessToken();
       if (!token) {
-        if (mounted) setScreen('login');
+        if (mounted) setScreenAnimated('login');
         return;
       }
       const result = await me();
       if (!mounted) return;
       setUser(result.user);
-      setScreen('chat');
+      setScreenAnimated('chat');
     } catch (error) {
       if (!mounted) return;
       setBootError(error instanceof Error ? error.message : '启动失败，请检查网络连接');
-      setScreen('boot_error');
+      setScreenAnimated('boot_error');
     }
   }, []);
 
@@ -2141,20 +2388,20 @@ function Root() {
       {screen === 'login' ? (
         <LoginScreen
           notice={showNotice}
-          onRegister={() => setScreen('register')}
+          onRegister={() => setScreenAnimated('register')}
           onLoggedIn={(nextUser) => {
             setUser(nextUser);
-            setScreen('chat');
+            setScreenAnimated('chat');
           }}
         />
       ) : null}
       {screen === 'register' ? (
         <RegisterScreen
           notice={showNotice}
-          onBack={() => setScreen('login')}
+          onBack={() => setScreenAnimated('login')}
           onRegistered={(nextUser) => {
             setUser(nextUser);
-            setScreen('chat');
+            setScreenAnimated('chat');
           }}
         />
       ) : null}
@@ -2164,7 +2411,7 @@ function Root() {
           notice={showNotice}
           onSignedOut={() => {
             setUser(null);
-            setScreen('login');
+            setScreenAnimated('login');
           }}
           onUserUpdated={(updatedUser) => setUser(updatedUser)}
         />
@@ -2200,20 +2447,31 @@ export default function App() {
   // 字体加载失败时仍允许进入
   if (!fontsLoaded && !fontsError) {
     return (
-      <View style={[styles.flex, styles.boot]}>
-        <Surface mode="flat" style={styles.logoBadge}>
-          <Text variant="headlineSmall" style={styles.logoText}>A</Text>
-        </Surface>
-        <ActivityIndicator size="large" />
-        <Text variant="bodyMedium" style={styles.bootText}>加载字体中…</Text>
-      </View>
+      <PaperProvider theme={createAppTheme(false)}>
+        <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', gap: 16, backgroundColor: createAppTheme(false).colors.background }]}>
+          <Surface mode="flat" style={{ width: 72, height: 72, borderRadius: 24, backgroundColor: createAppTheme(false).colors.primaryContainer, alignItems: 'center', justifyContent: 'center' }}>
+            <Text variant="headlineSmall" style={{ color: createAppTheme(false).colors.onPrimaryContainer, fontWeight: '800' }}>A</Text>
+          </Surface>
+          <ActivityIndicator size="large" />
+          <Text variant="bodyMedium" style={{ color: createAppTheme(false).colors.onSurfaceVariant }}>加载字体中…</Text>
+        </View>
+      </PaperProvider>
     );
   }
 
   return (
+    <AppThemeProvider>
+      <AppInner />
+    </AppThemeProvider>
+  );
+}
+
+function AppInner() {
+  const { theme, isDark } = useAppTheme();
+  return (
     <PaperProvider theme={theme}>
       <SafeAreaProvider>
-        <StatusBar style="dark" />
+        <StatusBar style={isDark ? 'light' : 'dark'} />
         <Root />
       </SafeAreaProvider>
     </PaperProvider>
@@ -2222,138 +2480,154 @@ export default function App() {
 
 // ==================== 样式 ====================
 
-const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: theme.colors.background },
-  boot: { alignItems: 'center', justifyContent: 'center', gap: 16 },
-  bootText: { color: theme.colors.onSurfaceVariant },
-  bootErrorTitle: { color: theme.colors.error, fontWeight: '700' },
-  bootErrorText: { color: theme.colors.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 32 },
+function createAppStyles(theme: AppTheme) {
+  return StyleSheet.create({
+    flex: { flex: 1, backgroundColor: theme.colors.background },
+    boot: { alignItems: 'center', justifyContent: 'center', gap: 16 },
+    bootText: { color: theme.colors.onSurfaceVariant },
+    bootErrorTitle: { color: theme.colors.error, fontWeight: '700' },
+    bootErrorText: { color: theme.colors.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 32 },
 
-  // 认证
-  authContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 32, paddingBottom: 36, justifyContent: 'center' },
-  hero: { alignItems: 'center', marginBottom: 24, gap: 8 },
-  logoBadge: { width: 72, height: 72, borderRadius: 24, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center' },
-  logoText: { color: theme.colors.onPrimaryContainer, fontWeight: '800' },
-  heroTitle: { color: theme.colors.onSurface, fontWeight: '800' },
-  heroSubtitle: { color: theme.colors.onSurfaceVariant },
-  heroChip: { marginTop: 4, backgroundColor: theme.colors.secondaryContainer },
-  authCard: { borderRadius: 28, backgroundColor: theme.colors.surface },
-  cardContent: { gap: 12, paddingVertical: 12 },
-  sectionTitle: { fontWeight: '700' },
-  muted: { color: theme.colors.onSurfaceVariant, marginBottom: 4 },
-  input: { backgroundColor: theme.colors.surface },
-  primaryButton: { marginTop: 8, borderRadius: 28 },
-  primaryButtonContent: { paddingVertical: 8, paddingHorizontal: 8 },
-  primaryButtonLabel: { fontSize: 16, fontWeight: '700' },
-  registerLink: { alignItems: 'center', paddingVertical: 8, marginTop: 4 },
-  registerLinkText: { fontSize: 14, color: theme.colors.onSurfaceVariant },
-  registerLinkHighlight: { color: theme.colors.primary, fontWeight: '700' },
-  backButtonLabel: { color: theme.colors.primary, fontWeight: '700' },
-  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  captchaRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  captchaBox: { width: 176, minHeight: 72, borderRadius: 22, padding: 8, backgroundColor: theme.colors.surfaceVariant, alignItems: 'center', justifyContent: 'center' },
-  captchaErrorBox: { alignItems: 'center', justifyContent: 'center', padding: 8 },
-  captchaErrorText: { color: theme.colors.error, textAlign: 'center' },
-  codeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  codeInput: { flex: 1, backgroundColor: theme.colors.surface },
-  codeButton: { borderRadius: 22, alignSelf: 'stretch', justifyContent: 'center' },
-  codeButtonContent: { paddingVertical: 4 },
-  codeButtonLabel: { fontWeight: '700' },
-  debugCodeBox: { borderRadius: 12, padding: 10, marginBottom: 8, backgroundColor: theme.colors.tertiaryContainer },
-  debugCodeText: { color: theme.colors.onTertiaryContainer, textAlign: 'center' },
-  debugCodeValue: { fontWeight: '700', letterSpacing: 2 },
+    // 认证
+    authContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 32, paddingBottom: 36, justifyContent: 'center' },
+    hero: { alignItems: 'center', marginBottom: 24, gap: 8 },
+    logoBadge: { width: 72, height: 72, borderRadius: 24, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center' },
+    logoText: { color: theme.colors.onPrimaryContainer, fontWeight: '800' },
+    heroTitle: { color: theme.colors.onSurface, fontWeight: '800' },
+    heroSubtitle: { color: theme.colors.onSurfaceVariant },
+    heroChip: { marginTop: 4, backgroundColor: theme.colors.secondaryContainer },
+    authCard: { borderRadius: 28, backgroundColor: theme.colors.surface },
+    cardContent: { gap: 12, paddingVertical: 12 },
+    sectionTitle: { fontWeight: '700' },
+    muted: { color: theme.colors.onSurfaceVariant, marginBottom: 4 },
+    input: { backgroundColor: theme.colors.surface },
+    primaryButton: { marginTop: 8, borderRadius: 28 },
+    primaryButtonContent: { paddingVertical: 8, paddingHorizontal: 8 },
+    primaryButtonLabel: { fontSize: 16, fontWeight: '700' },
+    registerLink: { alignItems: 'center', paddingVertical: 8, marginTop: 4 },
+    registerLinkText: { fontSize: 14, color: theme.colors.onSurfaceVariant },
+    registerLinkHighlight: { color: theme.colors.primary, fontWeight: '700' },
+    backButtonLabel: { color: theme.colors.primary, fontWeight: '700' },
+    rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    captchaRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    captchaBox: { width: 176, minHeight: 72, borderRadius: 22, padding: 8, backgroundColor: theme.colors.surfaceVariant, alignItems: 'center', justifyContent: 'center' },
+    captchaErrorBox: { alignItems: 'center', justifyContent: 'center', padding: 8 },
+    captchaErrorText: { color: theme.colors.error, textAlign: 'center' },
+    codeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    codeInput: { flex: 1, backgroundColor: theme.colors.surface },
+    codeButton: { borderRadius: 22, alignSelf: 'stretch', justifyContent: 'center' },
+    codeButtonContent: { paddingVertical: 4 },
+    codeButtonLabel: { fontWeight: '700' },
+    debugCodeBox: { borderRadius: 12, padding: 10, marginBottom: 8, backgroundColor: theme.colors.tertiaryContainer },
+    debugCodeText: { color: theme.colors.onTertiaryContainer, textAlign: 'center' },
+    debugCodeValue: { fontWeight: '700', letterSpacing: 2 },
 
-  // 聊天顶栏
-  chatMetaBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: theme.colors.surface },
-  modelPickerContent: { paddingHorizontal: 4 },
-  modelPickerLabel: { fontWeight: '700' },
-  deepThinkingRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
-  deepThinkingIconActive: { backgroundColor: theme.colors.primaryContainer, borderRadius: 12 },
-  deepThinkingLabel: { color: theme.colors.onSurfaceVariant, fontSize: 12 },
-  deepThinkingLabelActive: { color: theme.colors.primary, fontSize: 12, fontWeight: '700' },
-  deepThinkingSwitch: { transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] },
-  deepThinkingBanner: { backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 16, paddingVertical: 6 },
-  deepThinkingBannerText: { color: theme.colors.onPrimaryContainer, fontSize: 12 },
+    // 聊天顶栏
+    chatMetaBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: theme.colors.surface },
+    modelPickerContent: { paddingHorizontal: 4 },
+    modelPickerLabel: { fontWeight: '700' },
+    deepThinkingRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+    deepThinkingIconActive: { backgroundColor: theme.colors.primaryContainer, borderRadius: 12 },
+    deepThinkingLabel: { color: theme.colors.onSurfaceVariant, fontSize: 12 },
+    deepThinkingLabelActive: { color: theme.colors.primary, fontSize: 12, fontWeight: '700' },
+    deepThinkingSwitch: { transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] },
+    deepThinkingBanner: { backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 16, paddingVertical: 6 },
+    deepThinkingBannerText: { color: theme.colors.onPrimaryContainer, fontSize: 12 },
 
-  // 消息
-  messageListContent: { padding: 16, gap: 8, paddingBottom: 8 },
-  messageRow: { width: '100%', flexDirection: 'column' },
-  messageLeft: { alignItems: 'flex-start' },
-  messageRight: { alignItems: 'flex-end' },
-  messageBubble: { maxWidth: '86%', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10 },
-  userBubble: { backgroundColor: theme.colors.primary, borderBottomRightRadius: 6 },
-  assistantBubble: { backgroundColor: theme.colors.surfaceVariant, borderBottomLeftRadius: 6 },
-  userBubbleText: { color: theme.colors.onPrimary, lineHeight: 22, fontSize: 15 },
-  assistantBubbleText: { color: theme.colors.onSurface, lineHeight: 22, fontSize: 15 },
-  messageTime: { marginTop: 2, marginHorizontal: 4, fontSize: 10, color: theme.colors.outline },
-  messageTimeLeft: { alignSelf: 'flex-start' },
-  messageTimeRight: { alignSelf: 'flex-end' },
+    // 消息
+    messageListContent: { padding: 16, gap: 8, paddingBottom: 8 },
+    messageRow: { width: '100%', flexDirection: 'column' },
+    messageLeft: { alignItems: 'flex-start' },
+    messageRight: { alignItems: 'flex-end' },
+    messageBubble: { maxWidth: '86%', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10 },
+    userBubble: { backgroundColor: theme.colors.primary, borderBottomRightRadius: 6 },
+    assistantBubble: { backgroundColor: theme.colors.surfaceVariant, borderBottomLeftRadius: 6 },
+    userBubbleText: { color: theme.colors.onPrimary, lineHeight: 22, fontSize: 15 },
+    assistantBubbleText: { color: theme.colors.onSurface, lineHeight: 22, fontSize: 15 },
+    messageTime: { marginTop: 2, marginHorizontal: 4, fontSize: 10, color: theme.colors.outline },
+    messageTimeLeft: { alignSelf: 'flex-start' },
+    messageTimeRight: { alignSelf: 'flex-end' },
 
-  // 输入栏
-  composer: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: Platform.select({ ios: 8, android: 12 }), borderTopLeftRadius: 28, borderTopRightRadius: 28, backgroundColor: theme.colors.surface },
-  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
-  composerInput: { flex: 1, maxHeight: 140, backgroundColor: theme.colors.surface },
-  sendButton: { marginBottom: 4, borderRadius: 24, marginHorizontal: 0 },
+    // 输入栏
+    composer: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: Platform.select({ ios: 8, android: 12 }), borderTopLeftRadius: 28, borderTopRightRadius: 28, backgroundColor: theme.colors.surface },
+    composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
+    composerInput: { flex: 1, maxHeight: 140, backgroundColor: theme.colors.surface },
+    sendButton: { marginBottom: 4, borderRadius: 24, marginHorizontal: 0 },
 
-  // 录音状态
-  recordingBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, marginLeft: 4 },
-  recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.error },
-  recordingText: { color: theme.colors.error, fontWeight: '700' },
+    // 录音状态
+    recordingBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, marginLeft: 4 },
+    recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.error },
+    recordingText: { color: theme.colors.error, fontWeight: '700' },
 
-  // 图片预览
-  imagePreviewRow: { flexDirection: 'row', marginBottom: 8, marginLeft: 44 },
-  imagePreviewWrap: { position: 'relative', width: 64, height: 64, borderRadius: 12, overflow: 'hidden', backgroundColor: theme.colors.surfaceVariant },
-  imagePreviewThumb: { width: 64, height: 64 },
-  imagePreviewRemove: { position: 'absolute', top: 2, right: 2, width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
-  imagePreviewRemoveText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-  messageImage: { width: 200, height: 200, borderRadius: 12 },
+    // 图片预览
+    imagePreviewRow: { flexDirection: 'row', marginBottom: 8, marginLeft: 44 },
+    imagePreviewWrap: { position: 'relative', width: 64, height: 64, borderRadius: 12, overflow: 'hidden', backgroundColor: theme.colors.surfaceVariant },
+    imagePreviewThumb: { width: 64, height: 64 },
+    imagePreviewRemove: { position: 'absolute', top: 2, right: 2, width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
+    imagePreviewRemoveText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+    messageImage: { width: 200, height: 200, borderRadius: 12 },
 
-  // 通知
-  errorSnack: { backgroundColor: theme.colors.error },
-  warningSnack: { backgroundColor: theme.colors.tertiary },
+    // 通知
+    errorSnack: { backgroundColor: theme.colors.error },
+    warningSnack: { backgroundColor: theme.colors.tertiary },
 
-  // 历史
-  emptyHistoryInner: { alignItems: 'center', justifyContent: 'center', paddingTop: 64, gap: 4 },
-  activeConvo: { backgroundColor: theme.colors.primaryContainer },
+    // 历史
+    emptyHistoryInner: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 80 },
+    emptyHistoryIconCircle: { width: 96, height: 96, borderRadius: 48, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center' },
+    emptyHistoryIcon: { color: theme.colors.onPrimaryContainer },
+    activeConvo: { backgroundColor: theme.colors.primaryContainer },
 
-  // 公告
-  chatAnnouncement: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.secondaryContainer, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 4, paddingRight: 4, marginBottom: 8 },
-  chatAnnouncementText: { flex: 1, color: theme.colors.onSecondaryContainer, lineHeight: 18 },
-  chatAnnouncementLink: { color: theme.colors.primary, fontWeight: '700' },
-  chatAnnouncementClose: { margin: 0 },
+    // 聊天空状态
+    emptyChatInner: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 48, paddingHorizontal: 32 },
+    emptyChatIconCircle: { width: 88, height: 88, borderRadius: 44, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center' },
+    emptyChatIcon: { color: theme.colors.onPrimaryContainer },
+    emptyChatTips: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 20 },
+    emptyChatTipChip: { borderRadius: 16, margin: 0 },
 
-  // 个人主页
-  profileContent: { padding: 16, gap: 16, paddingBottom: 32 },
-  profileHeader: { alignItems: 'center', gap: 4, paddingTop: 16 },
-  profileAvatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  profileAvatarText: { color: theme.colors.onPrimaryContainer, fontWeight: '800' },
-  profileName: { fontWeight: '700', color: theme.colors.onSurface },
-  roleChip: { marginTop: 4, backgroundColor: theme.colors.tertiaryContainer },
-  profileDivider: { marginVertical: 4 },
-  profileCard: { borderRadius: 20, backgroundColor: theme.colors.surface },
-  tokenStats: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', marginTop: 12, marginBottom: 8 },
-  tokenStatItem: { alignItems: 'center', gap: 2 },
-  tokenStatValue: { fontWeight: '700', color: theme.colors.primary },
-  tokenStatDivider: { width: 1, height: 32, backgroundColor: theme.colors.outline, opacity: 0.3 },
-  tokenProgressWrap: { gap: 4, marginTop: 4 },
-  tokenProgress: { height: 8, borderRadius: 4 },
-  announcementCard: { borderRadius: 20, backgroundColor: theme.colors.primaryContainer, padding: 16, gap: 8 },
-  announcementRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  announcementText: { flex: 1, gap: 2 },
-  announcementTitle: { fontWeight: '700', color: theme.colors.onPrimaryContainer },
-  announcementBody: { color: theme.colors.onPrimaryContainer, lineHeight: 18 },
-  announcementButton: { borderRadius: 20 },
-  announcementButtonContent: { paddingVertical: 4 },
-  announcementButtonLabel: { fontWeight: '700' },
-  versionInfo: { alignItems: 'center', paddingVertical: 4 },
-  signOutButton: { borderRadius: 20, borderColor: theme.colors.error, marginTop: 8 },
+    // 公告
+    chatAnnouncement: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.secondaryContainer, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 4, paddingRight: 4, marginBottom: 8 },
+    chatAnnouncementText: { flex: 1, color: theme.colors.onSecondaryContainer, lineHeight: 18 },
+    chatAnnouncementLink: { color: theme.colors.primary, fontWeight: '700' },
+    chatAnnouncementClose: { margin: 0 },
 
-  // 角色扮演
-  roleplayToggleCard: { borderRadius: 20, backgroundColor: theme.colors.surface, padding: 16 },
-  roleplayToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  roleplayPresetCard: { borderRadius: 16, backgroundColor: theme.colors.surface, padding: 12 },
-  roleplayPresetActive: { backgroundColor: theme.colors.primaryContainer, borderWidth: 2, borderColor: theme.colors.primary },
-  roleplayPresetRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  roleplayPresetEmoji: { width: 44, height: 44, borderRadius: 12, backgroundColor: theme.colors.surfaceVariant, alignItems: 'center', justifyContent: 'center' },
-  roleplayPreview: { borderRadius: 16, backgroundColor: theme.colors.surfaceVariant, padding: 12 },
-});
+    // 个人主页
+    profileContent: { padding: 16, gap: 16, paddingBottom: 32 },
+    profileHeader: { alignItems: 'center', gap: 4, paddingTop: 16 },
+    profileAvatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+    profileAvatarText: { color: theme.colors.onPrimaryContainer, fontWeight: '800' },
+    profileName: { fontWeight: '700', color: theme.colors.onSurface },
+    roleChip: { marginTop: 4, backgroundColor: theme.colors.tertiaryContainer },
+    profileDivider: { marginVertical: 4 },
+    profileCard: { borderRadius: 20, backgroundColor: theme.colors.surface },
+    tokenStats: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', marginTop: 12, marginBottom: 8 },
+    tokenStatItem: { alignItems: 'center', gap: 2 },
+    tokenStatValue: { fontWeight: '700', color: theme.colors.primary },
+    tokenStatDivider: { width: 1, height: 32, backgroundColor: theme.colors.outline, opacity: 0.3 },
+    tokenProgressWrap: { gap: 4, marginTop: 4 },
+    tokenProgress: { height: 8, borderRadius: 4 },
+    announcementCard: { borderRadius: 20, backgroundColor: theme.colors.primaryContainer, padding: 16, gap: 8 },
+    announcementRow: { flexDirection: 'row', alignItems: 'flex-start' },
+    announcementText: { flex: 1, gap: 2 },
+    announcementTitle: { fontWeight: '700', color: theme.colors.onPrimaryContainer },
+    announcementBody: { color: theme.colors.onPrimaryContainer, lineHeight: 18 },
+    announcementButton: { borderRadius: 20 },
+    announcementButtonContent: { paddingVertical: 4 },
+    announcementButtonLabel: { fontWeight: '700' },
+    versionInfo: { alignItems: 'center', paddingVertical: 4 },
+    signOutButton: { borderRadius: 20, borderColor: theme.colors.error, marginTop: 8 },
+
+    // 角色扮演
+    roleplayToggleCard: { borderRadius: 20, backgroundColor: theme.colors.surface, padding: 16 },
+    roleplayToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    roleplayPresetCard: { borderRadius: 16, backgroundColor: theme.colors.surface, padding: 12 },
+    roleplayPresetActive: { backgroundColor: theme.colors.primaryContainer, borderWidth: 2, borderColor: theme.colors.primary },
+    roleplayPresetRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    roleplayPresetEmoji: { width: 44, height: 44, borderRadius: 12, backgroundColor: theme.colors.surfaceVariant, alignItems: 'center', justifyContent: 'center' },
+    roleplayPreview: { borderRadius: 16, backgroundColor: theme.colors.surfaceVariant, padding: 12 },
+  });
+}
+
+function useAppStyles() {
+  const { theme } = useAppTheme();
+  return useMemo(() => createAppStyles(theme), [theme]);
+}

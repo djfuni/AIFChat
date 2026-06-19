@@ -3,10 +3,10 @@
     "name": "AIF Chat",
     "slug": "aif-chat-mobile",
     "scheme": "aifchat",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash.png",
