@@ -173,6 +173,16 @@ export async function login(username: string, password: string): Promise<AuthPay
   return result.data;
 }
 
+export async function guestLogin(deviceId?: string): Promise<AuthPayload> {
+  const result = await rawRequest<AuthPayload>('guest', {
+    device_id: deviceId || '',
+    device_name: 'AIF Chat Mobile',
+  });
+  if (!result.data) throw new ApiError('游客登录失败', 400, result);
+  await saveTokens(result.data);
+  return result.data;
+}
+
 export async function logout(): Promise<void> {
   const refreshToken = await getRefreshToken();
   try {

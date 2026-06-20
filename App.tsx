@@ -47,7 +47,6 @@ import {
   configureFonts,
 } from 'react-native-paper';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { SvgXml } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import {
   useFonts,
@@ -62,13 +61,9 @@ import {
   ApiError,
   chatStream,
   getAccessToken,
-  getCaptcha,
-  login,
-  logout,
+  guestLogin,
   me,
   models,
-  register,
-  sendEmailCode,
   transcribeAudio,
 } from './src/api';
 import type { ChatMessage, ModelItem, User } from './src/types';
@@ -338,7 +333,7 @@ function isModelAllowed(modelId: string): boolean {
   return APP_COPY.allowedModelPrefixes.some((prefix) => id.startsWith(prefix));
 }
 
-type Screen = 'boot' | 'boot_error' | 'login' | 'register' | 'chat';
+type Screen = 'boot' | 'boot_error' | 'chat';
 type Notice = { text: string; tone?: 'normal' | 'error' | 'warning' };
 
 function nowId(prefix: string): string {
@@ -446,233 +441,6 @@ function HeroHeader() {
       <Text variant="bodyMedium" style={styles.heroSubtitle}>{APP_COPY.tagline}</Text>
       <Chip compact icon="shield-check" style={styles.heroChip}>{APP_COPY.noTokenHint}</Chip>
     </View>
-  );
-}
-
-// ==================== LoginScreen ====================
-
-function LoginScreen({ onLoggedIn, onRegister, notice }: {
-  onLoggedIn: (user: User) => void;
-  onRegister: () => void;
-  notice: (notice: Notice) => void;
-}) {
-  const { theme } = useAppTheme();
-  const styles = useAppStyles();
-  const [account, setAccount] = useState('');
-  const [password, setPassword] = useState('');
-  const [secure, setSecure] = useState(true);
-  const [loading, setLoading] = useState(false);
-
-  const submit = async () => {
-    if (!account.trim() || !password) {
-      notice({ text: '请填写账号和密码', tone: 'error' });
-      return;
-    }
-    setLoading(true);
-    try {
-      const payload = await login(account.trim(), password);
-      onLoggedIn(payload.user);
-    } catch (error) {
-      notice({ text: asErrorMessage(error), tone: 'error' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={styles.flex}>
-      <ScrollView contentContainerStyle={styles.authContainer} keyboardShouldPersistTaps="handled">
-        <HeroHeader />
-        <Card mode="elevated" style={styles.authCard}>
-          <Card.Content style={styles.cardContent}>
-            <Text variant="titleLarge" style={styles.sectionTitle}>登录账号</Text>
-            <Text variant="bodyMedium" style={styles.muted}>使用你网站已有账号即可登录 ~</Text>
-            <TextInput
-              mode="outlined"
-              label="用户名或邮箱"
-              value={account}
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={setAccount}
-              style={styles.input}
-              left={<TextInput.Icon icon="account" />}
-            />
-            <TextInput
-              mode="outlined"
-              label="密码"
-              value={password}
-              secureTextEntry={secure}
-              onChangeText={setPassword}
-              left={<TextInput.Icon icon="lock" />}
-              right={<TextInput.Icon icon={secure ? 'eye' : 'eye-off'} onPress={() => setSecure((value) => !value)} />}
-              style={styles.input}
-              onSubmitEditing={submit}
-            />
-            <Button mode="contained" loading={loading} disabled={loading} onPress={submit} style={styles.primaryButton} contentStyle={styles.primaryButtonContent} labelStyle={styles.primaryButtonLabel}>
-              登录并开始使用
-            </Button>
-            <TouchableOpacity onPress={onRegister} disabled={loading} style={styles.registerLink}>
-              <Text style={styles.registerLinkText}>还没有账号？<Text style={styles.registerLinkHighlight}>立即注册</Text></Text>
-            </TouchableOpacity>
-            <Divider style={{ marginVertical: 8 }} />
-            <Text variant="labelMedium" style={[styles.muted, { textAlign: 'center', marginBottom: 8 }]}>第三方登录（即将开放）</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16 }}>
-              <IconButton icon="qqchat" mode="contained-tonal" size={32} containerColor={theme.colors.surfaceVariant} iconColor={theme.colors.onSurfaceVariant} disabled />
-              <IconButton icon="wechat" mode="contained-tonal" size={32} containerColor={theme.colors.surfaceVariant} iconColor={theme.colors.onSurfaceVariant} disabled />
-              <IconButton icon="github" mode="contained-tonal" size={32} containerColor={theme.colors.surfaceVariant} iconColor={theme.colors.onSurfaceVariant} disabled />
-              <IconButton icon="google" mode="contained-tonal" size={32} containerColor={theme.colors.surfaceVariant} iconColor={theme.colors.onSurfaceVariant} disabled />
-            </View>
-          </Card.Content>
-        </Card>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  );
-}
-
-// ==================== RegisterScreen ====================
-
-function RegisterScreen({ onRegistered, onBack, notice }: {
-  onRegistered: (user: User) => void;
-  onBack: () => void;
-  notice: (notice: Notice) => void;
-}) {
-  const { theme } = useAppTheme();
-  const styles = useAppStyles();
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [emailCode, setEmailCode] = useState('');
-  const [captchaId, setCaptchaId] = useState('');
-  const [captchaSvg, setCaptchaSvg] = useState('');
-  const [captchaCode, setCaptchaCode] = useState('');
-  const [secure, setSecure] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [sendingCode, setSendingCode] = useState(false);
-  const [captchaLoading, setCaptchaLoading] = useState(false);
-  const [captchaError, setCaptchaError] = useState('');
-  const [debugCode, setDebugCode] = useState('');
-
-  const reloadCaptcha = useCallback(async () => {
-    setCaptchaLoading(true);
-    setCaptchaError('');
-    try {
-      const captcha = await getCaptcha();
-      setCaptchaId(captcha.captcha_id);
-      setCaptchaSvg(captcha.svg);
-      setCaptchaCode('');
-      setDebugCode('');
-    } catch (error) {
-      const msg = asErrorMessage(error);
-      setCaptchaError(msg);
-      notice({ text: '验证码加载失败：' + msg, tone: 'error' });
-    } finally {
-      setCaptchaLoading(false);
-    }
-  }, [notice]);
-
-  useEffect(() => {
-    reloadCaptcha();
-  }, [reloadCaptcha]);
-
-  const sendCode = async () => {
-    if (!email.trim() || !captchaCode.trim()) {
-      notice({ text: '请先填写邮箱和图片验证码', tone: 'error' });
-      return;
-    }
-    setSendingCode(true);
-    setDebugCode('');
-    try {
-      const result = await sendEmailCode(email.trim(), captchaId, captchaCode.trim());
-      if (result.debug_code) {
-        setDebugCode(result.debug_code);
-        setEmailCode(result.debug_code);
-        notice({ text: '⚠️ 调试模式 - 验证码已自动填入', tone: 'warning' });
-      } else {
-        notice({ text: '邮箱验证码已发送 ~' });
-      }
-    } catch (error) {
-      await reloadCaptcha();
-      notice({ text: asErrorMessage(error), tone: 'error' });
-    } finally {
-      setSendingCode(false);
-    }
-  };
-
-  const submit = async () => {
-    if (!username.trim() || !email.trim() || !password || !emailCode.trim()) {
-      notice({ text: '请完整填写注册信息', tone: 'error' });
-      return;
-    }
-    setLoading(true);
-    try {
-      const payload = await register({
-        username: username.trim(),
-        email: email.trim(),
-        password,
-        email_code: emailCode.trim(),
-        captcha_id: captchaId,
-        captcha_code: captchaCode.trim(),
-      });
-      onRegistered(payload.user);
-    } catch (error) {
-      notice({ text: asErrorMessage(error), tone: 'error' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={styles.flex}>
-      <ScrollView contentContainerStyle={styles.authContainer} keyboardShouldPersistTaps="handled">
-        <HeroHeader />
-        <Card mode="elevated" style={styles.authCard}>
-          <Card.Content style={styles.cardContent}>
-            <View style={styles.rowBetween}>
-              <Text variant="titleLarge" style={styles.sectionTitle}>注册账号</Text>
-              <Button mode="text" onPress={onBack} labelStyle={styles.backButtonLabel}>返回登录</Button>
-            </View>
-            <TextInput mode="outlined" label="用户名" value={username} onChangeText={setUsername} style={styles.input} left={<TextInput.Icon icon="account-outline" />} />
-            <TextInput mode="outlined" label="邮箱" value={email} keyboardType="email-address" autoCapitalize="none" onChangeText={setEmail} style={styles.input} left={<TextInput.Icon icon="email-outline" />} />
-            <View style={styles.captchaRow}>
-              <Surface mode="flat" style={styles.captchaBox}>
-                {captchaLoading ? (
-                  <ActivityIndicator size="small" />
-                ) : captchaError ? (
-                  <TouchableOpacity onPress={reloadCaptcha} style={styles.captchaErrorBox}>
-                    <Text variant="labelSmall" style={styles.captchaErrorText}>加载失败，点击重试</Text>
-                  </TouchableOpacity>
-                ) : captchaSvg ? (
-                  <SvgXml xml={captchaSvg} width={160} height={56} />
-                ) : null}
-              </Surface>
-              <IconButton icon="refresh" mode="contained" containerColor={theme.colors.primary} iconColor={theme.colors.onPrimary} onPress={reloadCaptcha} size={24} />
-            </View>
-            <TextInput mode="outlined" label="图片验证码" value={captchaCode} autoCapitalize="characters" onChangeText={setCaptchaCode} style={styles.input} left={<TextInput.Icon icon="image-outline" />} />
-            {debugCode ? (
-              <Surface mode="flat" style={styles.debugCodeBox}>
-                <Text variant="labelMedium" style={styles.debugCodeText}>🔧 调试模式 - 验证码：<Text variant="labelLarge" style={styles.debugCodeValue}>{debugCode}</Text></Text>
-              </Surface>
-            ) : null}
-            <View style={styles.codeRow}>
-              <TextInput mode="outlined" label="邮箱验证码" value={emailCode} keyboardType="number-pad" onChangeText={setEmailCode} style={styles.codeInput} left={<TextInput.Icon icon="numeric" />} />
-              <Button mode="contained" loading={sendingCode} disabled={sendingCode} onPress={sendCode} style={styles.codeButton} contentStyle={styles.codeButtonContent} labelStyle={styles.codeButtonLabel}>发送</Button>
-            </View>
-            <TextInput
-              mode="outlined"
-              label="密码（至少 8 位）"
-              value={password}
-              secureTextEntry={secure}
-              onChangeText={setPassword}
-              left={<TextInput.Icon icon="lock" />}
-              right={<TextInput.Icon icon={secure ? 'eye' : 'eye-off'} onPress={() => setSecure((value) => !value)} />}
-              style={styles.input}
-              onSubmitEditing={submit}
-            />
-            <Button mode="contained" loading={loading} disabled={loading} onPress={submit} style={styles.primaryButton} contentStyle={styles.primaryButtonContent} labelStyle={styles.primaryButtonLabel}>注册并登录</Button>
-          </Card.Content>
-        </Card>
-      </ScrollView>
-    </KeyboardAvoidingView>
   );
 }
 
@@ -1415,10 +1183,9 @@ function PromptSquareScreen({ onBack, onApply, notice }: {
 
 // ==================== ProfileScreen ====================
 
-function ProfileScreen({ user, onBack, onSignOut, onRefreshUser }: {
+function ProfileScreen({ user, onBack, onRefreshUser }: {
   user: User;
   onBack: () => void;
-  onSignOut: () => void;
   onRefreshUser: () => Promise<User | null>;
 }) {
   const { theme } = useAppTheme();
@@ -1567,16 +1334,6 @@ function ProfileScreen({ user, onBack, onSignOut, onRefreshUser }: {
         <View style={styles.versionInfo}>
           <Text variant="labelSmall" style={styles.muted}>AIF Chat v{APP_COPY.version}</Text>
         </View>
-
-        <Button
-          mode="outlined"
-          icon="logout"
-          onPress={onSignOut}
-          style={styles.signOutButton}
-          textColor={theme.colors.error}
-        >
-          退出登录
-        </Button>
       </ScrollView>
     </SafeAreaView>
   );
@@ -1584,9 +1341,8 @@ function ProfileScreen({ user, onBack, onSignOut, onRefreshUser }: {
 
 // ==================== ChatScreen（主聊天界面） ====================
 
-function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
+function ChatScreen({ user, onUserUpdated, notice }: {
   user: User;
-  onSignedOut: () => void;
   onUserUpdated: (user: User) => void;
   notice: (notice: Notice) => void;
 }) {
@@ -1720,15 +1476,6 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
       setConvoList(list);
     } catch { /* 静默失败 */ }
   }, []);
-
-  const signOut = async () => {
-    try {
-      await logout();
-      onSignedOut();
-    } catch (error) {
-      notice({ text: asErrorMessage(error), tone: 'error' });
-    }
-  };
 
   const refreshUserProfile = async (): Promise<User | null> => {
     try {
@@ -2013,7 +1760,6 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
       <ProfileScreen
         user={user}
         onBack={() => setSubScreenAnimated('chat')}
-        onSignOut={signOut}
         onRefreshUser={refreshUserProfile}
       />
     );
@@ -2147,7 +1893,6 @@ function ChatScreen({ user, onSignedOut, onUserUpdated, notice }: {
           <Menu.Item leadingIcon="message-text-outline" title="提示词广场" onPress={() => { setMenuVisible(false); setSubScreenAnimated('prompts'); }} />
           <Divider />
           <Menu.Item leadingIcon="qqchat" title="加入官方 QQ 群" onPress={() => { setMenuVisible(false); Linking.openURL(QQ_GROUP_URL); }} />
-          <Menu.Item leadingIcon="logout" title="退出登录" onPress={() => { setMenuVisible(false); signOut(); }} />
         </Menu>
       </Appbar.Header>
 
@@ -2347,13 +2092,20 @@ function Root() {
     setBootError('');
     try {
       const token = await getAccessToken();
-      if (!token) {
-        if (mounted) setScreenAnimated('login');
-        return;
+      if (token) {
+        try {
+          const result = await me();
+          if (!mounted) return;
+          setUser(result.user);
+          setScreenAnimated('chat');
+          return;
+        } catch {
+          // 已有 token 失效时，降级为游客登录
+        }
       }
-      const result = await me();
+      const payload = await guestLogin();
       if (!mounted) return;
-      setUser(result.user);
+      setUser(payload.user);
       setScreenAnimated('chat');
     } catch (error) {
       if (!mounted) return;
@@ -2393,34 +2145,10 @@ function Root() {
 
   return (
     <View style={styles.flex}>
-      {screen === 'login' ? (
-        <LoginScreen
-          notice={showNotice}
-          onRegister={() => setScreenAnimated('register')}
-          onLoggedIn={(nextUser) => {
-            setUser(nextUser);
-            setScreenAnimated('chat');
-          }}
-        />
-      ) : null}
-      {screen === 'register' ? (
-        <RegisterScreen
-          notice={showNotice}
-          onBack={() => setScreenAnimated('login')}
-          onRegistered={(nextUser) => {
-            setUser(nextUser);
-            setScreenAnimated('chat');
-          }}
-        />
-      ) : null}
       {screen === 'chat' && user ? (
         <ChatScreen
           user={user}
           notice={showNotice}
-          onSignedOut={() => {
-            setUser(null);
-            setScreenAnimated('login');
-          }}
           onUserUpdated={(updatedUser) => setUser(updatedUser)}
         />
       ) : null}
@@ -2622,7 +2350,6 @@ function createAppStyles(theme: AppTheme) {
     announcementButtonContent: { paddingVertical: 4 },
     announcementButtonLabel: { fontWeight: '700' },
     versionInfo: { alignItems: 'center', paddingVertical: 4 },
-    signOutButton: { borderRadius: 20, borderColor: theme.colors.error, marginTop: 8 },
 
     // 角色扮演
     roleplayToggleCard: { borderRadius: 20, backgroundColor: theme.colors.surface, padding: 16 },

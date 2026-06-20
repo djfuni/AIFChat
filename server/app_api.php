@@ -10,6 +10,7 @@
  *   send_email_code - 发送邮箱验证码
  *   register        - 用户注册
  *   login           - 用户登录
+ *   guest           - 匿名游客登录（无需注册）
  *   refresh         - 刷新 Token
  *   logout          - 退出登录
  *   me              - 获取用户信息
@@ -294,6 +295,62 @@ try {
                     'token_type' => 'Bearer',
                     'expires_in' => jwtAccessExpires(),
                     'user' => formatUser($user),
+                ],
+            ]);
+            break;
+
+        // ====================== 匿名游客登录 ======================
+        case 'guest':
+            $deviceId = param('device_id', '');
+            $guestSuffix = bin2hex(random_bytes(8));
+            $username = 'guest_' . $guestSuffix;
+            $password = bin2hex(random_bytes(32));
+            $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+            $tokensLimit = 1000000;
+
+            // 确保用户名唯一（极小概率冲突时重试）
+            $maxAttempts = 5;
+            $userId = 0;
+            for ($i = 0; $i < $maxAttempts; $i++) {
+                $stmt = db()->prepare('SELECT id FROM users WHERE username = ?');
+                $stmt->execute([$username]);
+                if (!$stmt->fetch()) {
+                    $stmt = db()->prepare(
+                        'INSERT INTO users (username, nickname, email, password, tokens_limit, tokens_remaining) VALUES (?, ?, ?, ?, ?, ?)'
+                    );
+                    $stmt->execute([$username, '游客', null, $hashedPassword, $tokensLimit, $tokensLimit]);
+                    $userId = (int) db()->lastInsertId();
+                    break;
+                }
+                $username = 'guest_' . bin2hex(random_bytes(8));
+            }
+
+            if ($userId === 0) {
+                error('游客账号创建失败，请重试');
+            }
+
+            $accessToken = issueAccessToken($userId, $username);
+            $refreshToken = issueRefreshToken($userId);
+
+            success([
+                'data' => [
+                    'access_token' => $accessToken,
+                    'refresh_token' => $refreshToken,
+                    'token_type' => 'Bearer',
+                    'expires_in' => jwtAccessExpires(),
+                    'user' => [
+                        'id' => $userId,
+                        'username' => $username,
+                        'nickname' => '游客',
+                        'email' => '',
+                        'role' => 'user',
+                        'status' => 'active',
+                        'avatar_url' => '',
+                        'points' => 0,
+                        'tokens_used' => 0,
+                        'tokens_limit' => $tokensLimit,
+                        'tokens_remaining' => $tokensLimit,
+                    ],
                 ],
             ]);
             break;
