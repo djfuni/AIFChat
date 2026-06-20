@@ -7,7 +7,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const STORAGE_KEY = 'aif_custom_api_config';
 
 export type CustomApiConfig = {
-  enabled: boolean;
   baseUrl: string;    // e.g. https://api.openai.com/v1
   apiKey: string;
   model: string;      // e.g. gpt-4o-mini
@@ -15,12 +14,15 @@ export type CustomApiConfig = {
 };
 
 export const DEFAULT_CUSTOM_API_CONFIG: CustomApiConfig = {
-  enabled: false,
-  baseUrl: 'https://api.openai.com/v1',
+  baseUrl: '',
   apiKey: '',
   model: 'gpt-4o-mini',
   maxTokens: 2048,
 };
+
+export function isCustomApiReady(config: CustomApiConfig): boolean {
+  return Boolean(config.baseUrl.trim() && config.apiKey.trim() && config.model.trim());
+}
 
 /**
  * 保存自定义 API 配置

@@ -5,6 +5,8 @@
 import type { ChatMessage } from './types';
 import type { CustomApiConfig } from './customApi';
 
+export type TranscribeResult = { text: string };
+
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
@@ -18,8 +20,8 @@ type ApiMessage = {
   content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
 };
 
-function buildMessages(messages: ChatMessage[]): ApiMessage[] {
-  return messages.map((item) => {
+function buildMessages(messages: ChatMessage[], systemPrompt?: string): ApiMessage[] {
+  const msgs: ApiMessage[] = messages.map((item) => {
     if (item.role === 'user' && item.imageData) {
       return {
         role: 'user',
@@ -34,6 +36,10 @@ function buildMessages(messages: ChatMessage[]): ApiMessage[] {
     }
     return { role: item.role, content: item.content };
   });
+  if (systemPrompt?.trim()) {
+    msgs.unshift({ role: 'system', content: systemPrompt.trim() });
+  }
+  return msgs;
 }
 
 /**
@@ -49,6 +55,8 @@ function buildMessages(messages: ChatMessage[]): ApiMessage[] {
 export function openaiChatStream(
   messages: ChatMessage[],
   config: CustomApiConfig,
+  systemPrompt: string | undefined,
+  deepThinking: boolean,
   onChunk: (text: string) => void,
   onDone: (fullText: string) => void,
   onError: (error: Error) => void,
@@ -60,7 +68,7 @@ export function openaiChatStream(
     const url = baseUrl.includes('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
 
     try {
-      const payloadMessages = buildMessages(messages);
+      const payloadMessages = buildMessages(messages, systemPrompt);
 
       // 先尝试流式请求
       const response = await fetchWithTimeout(
@@ -76,6 +84,7 @@ export function openaiChatStream(
             messages: payloadMessages,
             stream: true,
             max_tokens: config.maxTokens,
+            ...(deepThinking ? { deep_thinking: true } : {}),
           }),
         },
         DEFAULT_TIMEOUT_MS,
@@ -154,6 +163,71 @@ export function openaiChatStream(
   return {
     abort: () => controller.abort(),
   };
+}
+
+/**
+ * 获取 OpenAI 兼容接口的模型列表
+ */
+export async function fetchOpenAIModels(config: CustomApiConfig): Promise<{ id: string }[]> {
+  const baseUrl = config.baseUrl.replace(/\/+$/, '');
+  const url = `${baseUrl}/models`;
+
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+    },
+    15_000,
+  );
+
+  if (!response.ok) {
+    throw new Error(`获取模型列表失败 (${response.status})`);
+  }
+
+  const json = await response.json();
+  const data = json.data || [];
+  return data.filter((m: { id?: string }) => typeof m.id === 'string');
+}
+
+/**
+ * 直接调用 OpenAI 兼容接口的 Whisper 语音识别
+ */
+export async function transcribeWithCustomApi(
+  uri: string,
+  mimeType: string,
+  config: CustomApiConfig,
+): Promise<TranscribeResult> {
+  const baseUrl = config.baseUrl.replace(/\/+$/, '');
+  const url = `${baseUrl}/audio/transcriptions`;
+
+  const form = new FormData();
+  form.append('file', { uri, type: mimeType, name: `audio.${mimeType.split('/').pop() || 'm4a'}` } as unknown as Blob);
+  form.append('model', 'whisper-1');
+
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        // Fetch 在 React Native 中发送 FormData 时会自动设置 Content-Type 并附带 boundary，
+        // 手动设置反而可能导致 boundary 错误，因此这里不设置 Content-Type。
+      },
+      body: form,
+    },
+    DEFAULT_TIMEOUT_MS,
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`语音识别失败 (${response.status}): ${errorText || response.statusText}`);
+  }
+
+  const json = await response.json();
+  return { text: json.text || '' };
 }
 
 /**

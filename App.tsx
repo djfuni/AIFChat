@@ -57,16 +57,8 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { APP_COPY, QQ_GROUP_URL, WEBSITE_URL } from './src/config';
-import {
-  ApiError,
-  chatStream,
-  getAccessToken,
-  guestLogin,
-  me,
-  models,
-  transcribeAudio,
-} from './src/api';
-import type { ChatMessage, ModelItem, User } from './src/types';
+import { ApiError } from './src/api';
+import type { ChatMessage, ModelItem } from './src/types';
 import {
   createConversation,
   getCurrentConvoId,
@@ -89,9 +81,10 @@ import {
   saveCustomApiConfig,
   loadCustomApiConfig,
   DEFAULT_CUSTOM_API_CONFIG,
+  isCustomApiReady,
   type CustomApiConfig,
 } from './src/customApi';
-import { openaiChatStream, testApiConnection } from './src/openaiStream';
+import { openaiChatStream, testApiConnection, transcribeWithCustomApi, fetchOpenAIModels } from './src/openaiStream';
 
 // ==================== 主题系统 ====================
 
@@ -328,12 +321,11 @@ function showToast(msg: string) {
   }
 }
 
-function isModelAllowed(modelId: string): boolean {
-  const id = modelId.toLowerCase();
-  return APP_COPY.allowedModelPrefixes.some((prefix) => id.startsWith(prefix));
+function isModelAllowed(_modelId: string): boolean {
+  return true;
 }
 
-type Screen = 'boot' | 'boot_error' | 'chat';
+type Screen = 'boot' | 'boot_error' | 'setup' | 'chat';
 type Notice = { text: string; tone?: 'normal' | 'error' | 'warning' };
 
 function nowId(prefix: string): string {
@@ -360,13 +352,13 @@ function formatDateTime(ts: number): string {
   return `${dateStr} ${timeStr}`;
 }
 
-function welcomeMessage(user: User): ChatMessage {
+function welcomeMessage(): ChatMessage {
   return {
     id: nowId('assistant'),
     role: 'assistant',
     content:
-      `你好，${user.nickname || user.username}！这里是小蓝助手~ ✨\n\n` +
-      `你可以直接开始跟我聊天哦！试试点击右上角菜单，开启「角色扮演」模式，让我变成你想要的样子吧~ 🎭`,
+      '你好！这里是小蓝助手~ ✨\n\n' +
+      '你可以直接开始跟我聊天哦！试试点击右上角菜单，开启「角色扮演」模式，让我变成你想要的样子吧~ 🎭',
     createdAt: Date.now(),
   };
 }
@@ -901,7 +893,6 @@ function SettingsScreen({
 }) {
   const { theme, mode, setMode } = useAppTheme();
   const styles = useAppStyles();
-  const [enabled, setEnabled] = useState(config.enabled);
   const [baseUrl, setBaseUrl] = useState(config.baseUrl);
   const [apiKey, setApiKey] = useState(config.apiKey);
   const [model, setModel] = useState(config.model);
@@ -911,7 +902,6 @@ function SettingsScreen({
 
   const handleSave = () => {
     const newConfig: CustomApiConfig = {
-      enabled,
       baseUrl: baseUrl.replace(/\/+$/, ''),
       apiKey,
       model: model.trim(),
@@ -925,7 +915,6 @@ function SettingsScreen({
     setTesting(true);
     try {
       const result = await testApiConnection({
-        enabled: true,
         baseUrl: baseUrl.replace(/\/+$/, ''),
         apiKey,
         model: model.trim(),
@@ -947,7 +936,7 @@ function SettingsScreen({
     <SafeAreaView style={styles.flex} edges={['bottom']}>
       <Appbar.Header elevated mode="center-aligned">
         <Appbar.BackAction onPress={onBack} />
-        <Appbar.Content title="自定义 API" />
+        <Appbar.Content title="API 设置" />
       </Appbar.Header>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}>
         {/* 主题模式 */}
@@ -975,24 +964,7 @@ function SettingsScreen({
           </View>
         </Surface>
 
-        {/* 启用开关 */}
-        <Surface mode="elevated" style={{ borderRadius: 20, backgroundColor: theme.colors.surface, padding: 16 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View style={{ flex: 1 }}>
-              <Text variant="titleMedium" style={{ fontWeight: '700' }}>
-                🔌 使用自定义 API
-              </Text>
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 2 }}>
-                {enabled ? '已启用，将使用自定义接口发送消息' : '关闭后使用内置 AIF API'}
-              </Text>
-            </View>
-            <Switch value={enabled} onValueChange={setEnabled} color={theme.colors.primary} />
-          </View>
-        </Surface>
-
-        {!enabled ? null : (
-          <>
-            {/* API 地址 */}
+        {/* API 地址 */}
             <View>
               <Text variant="labelMedium" style={{ fontWeight: '600', color: theme.colors.onSurface, marginBottom: 4 }}>
                 API 地址
@@ -1077,8 +1049,6 @@ function SettingsScreen({
             >
               测试连接
             </Button>
-          </>
-        )}
 
         {/* 保存按钮 */}
         <Button
@@ -1089,6 +1059,194 @@ function SettingsScreen({
           labelStyle={{ fontSize: 16, fontWeight: '600' }}
         >
           保存设置
+        </Button>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ==================== API 初始设置页 ====================
+
+function ApiSetupScreen({ config, onSave, notice }: {
+  config: CustomApiConfig;
+  onSave: (config: CustomApiConfig) => void;
+  notice: (notice: Notice) => void;
+}) {
+  const { theme, mode, setMode } = useAppTheme();
+  const styles = useAppStyles();
+  const [baseUrl, setBaseUrl] = useState(config.baseUrl);
+  const [apiKey, setApiKey] = useState(config.apiKey);
+  const [model, setModel] = useState(config.model || 'gpt-4o-mini');
+  const [maxTokens, setMaxTokens] = useState(String(config.maxTokens || 2048));
+  const [testing, setTesting] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+
+  const handleSave = () => {
+    const trimmedUrl = baseUrl.replace(/\/+$/, '');
+    const trimmedKey = apiKey.trim();
+    const trimmedModel = model.trim();
+    if (!trimmedUrl || !trimmedKey || !trimmedModel) {
+      notice({ text: '请填写完整的 API 地址、Key 和模型名称', tone: 'error' });
+      return;
+    }
+    onSave({
+      baseUrl: trimmedUrl,
+      apiKey: trimmedKey,
+      model: trimmedModel,
+      maxTokens: Math.max(128, parseInt(maxTokens, 10) || 2048),
+    });
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    try {
+      const result = await testApiConnection({
+        baseUrl: baseUrl.replace(/\/+$/, ''),
+        apiKey,
+        model: model.trim(),
+        maxTokens: Math.max(128, parseInt(maxTokens, 10) || 2048),
+      });
+      notice({ text: result.message, tone: result.ok ? 'normal' : 'error' });
+    } catch (error) {
+      notice({ text: asErrorMessage(error), tone: 'error' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.flex} edges={['bottom']}>
+      <Appbar.Header elevated mode="center-aligned">
+        <Appbar.Content title="设置 API" />
+      </Appbar.Header>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}>
+        <Surface mode="elevated" style={{ borderRadius: 20, backgroundColor: theme.colors.surface, padding: 16, gap: 8 }}>
+          <Text variant="titleMedium" style={{ fontWeight: '700' }}>欢迎使用 AIF Chat</Text>
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+            服务器已下线，请配置你自己的 OpenAI 兼容 API（OpenAI / DeepSeek / 硅基流动 / Azure 等）。
+          </Text>
+        </Surface>
+
+        {/* 主题模式 */}
+        <Surface mode="elevated" style={{ borderRadius: 20, backgroundColor: theme.colors.surface, padding: 16, gap: 12 }}>
+          <Text variant="titleMedium" style={{ fontWeight: '700' }}>
+            🎨 主题模式
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {([
+              { value: 'light', label: '浅色', icon: 'white-balance-sunny' },
+              { value: 'dark', label: '深色', icon: 'weather-night' },
+              { value: 'system', label: '跟随系统', icon: 'theme-light-dark' },
+            ] as { value: ThemeMode; label: string; icon: string }[]).map((item) => (
+              <Button
+                key={item.value}
+                mode={mode === item.value ? 'contained' : 'outlined'}
+                icon={item.icon}
+                onPress={() => setMode(item.value)}
+                style={{ flex: 1, borderRadius: 16 }}
+                compact
+              >
+                {item.label}
+              </Button>
+            ))}
+          </View>
+        </Surface>
+
+        {/* API 地址 */}
+        <View>
+          <Text variant="labelMedium" style={{ fontWeight: '600', color: theme.colors.onSurface, marginBottom: 4 }}>
+            API 地址
+          </Text>
+          <TextInput
+            mode="outlined"
+            value={baseUrl}
+            onChangeText={setBaseUrl}
+            placeholder="https://api.openai.com/v1"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={{ backgroundColor: theme.colors.surface }}
+            left={<TextInput.Icon icon="api" />}
+          />
+          <Text variant="labelSmall" style={{ color: theme.colors.outline, marginTop: 2 }}>
+            支持 OpenAI 兼容接口
+          </Text>
+        </View>
+
+        {/* API Key */}
+        <View>
+          <Text variant="labelMedium" style={{ fontWeight: '600', color: theme.colors.onSurface, marginBottom: 4 }}>
+            API Key
+          </Text>
+          <TextInput
+            mode="outlined"
+            value={apiKey}
+            onChangeText={setApiKey}
+            placeholder="sk-..."
+            secureTextEntry={!showKey}
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={{ backgroundColor: theme.colors.surface }}
+            left={<TextInput.Icon icon="key-variant" />}
+            right={<TextInput.Icon icon={showKey ? 'eye-off' : 'eye'} onPress={() => setShowKey(!showKey)} />}
+          />
+        </View>
+
+        {/* 模型名 */}
+        <View>
+          <Text variant="labelMedium" style={{ fontWeight: '600', color: theme.colors.onSurface, marginBottom: 4 }}>
+            模型名称
+          </Text>
+          <TextInput
+            mode="outlined"
+            value={model}
+            onChangeText={setModel}
+            placeholder="gpt-4o-mini"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={{ backgroundColor: theme.colors.surface }}
+            left={<TextInput.Icon icon="cube-outline" />}
+          />
+        </View>
+
+        {/* Max Tokens */}
+        <View>
+          <Text variant="labelMedium" style={{ fontWeight: '600', color: theme.colors.onSurface, marginBottom: 4 }}>
+            最大 Token 数
+          </Text>
+          <TextInput
+            mode="outlined"
+            value={maxTokens}
+            onChangeText={setMaxTokens}
+            placeholder="2048"
+            keyboardType="number-pad"
+            style={{ backgroundColor: theme.colors.surface }}
+            left={<TextInput.Icon icon="counter" />}
+          />
+        </View>
+
+        {/* 测试连接 */}
+        <Button
+          mode="outlined"
+          icon="connection"
+          loading={testing}
+          disabled={testing || !apiKey.trim()}
+          onPress={handleTest}
+          style={{ borderRadius: 28 }}
+          contentStyle={{ paddingVertical: 6 }}
+          labelStyle={{ fontWeight: '600' }}
+        >
+          测试连接
+        </Button>
+
+        {/* 保存按钮 */}
+        <Button
+          mode="contained"
+          onPress={handleSave}
+          style={{ borderRadius: 28, marginTop: 8 }}
+          contentStyle={{ paddingVertical: 6 }}
+          labelStyle={{ fontSize: 16, fontWeight: '600' }}
+        >
+          开始使用
         </Button>
       </ScrollView>
     </SafeAreaView>
@@ -1181,169 +1339,11 @@ function PromptSquareScreen({ onBack, onApply, notice }: {
   );
 }
 
-// ==================== ProfileScreen ====================
-
-function ProfileScreen({ user, onBack, onRefreshUser }: {
-  user: User;
-  onBack: () => void;
-  onRefreshUser: () => Promise<User | null>;
-}) {
-  const { theme } = useAppTheme();
-  const styles = useAppStyles();
-  const [refreshing, setRefreshing] = useState(false);
-  const [currentUser, setCurrentUser] = useState(user);
-
-  const tokensUsed = currentUser.tokens_used ?? 0;
-  const tokensLimit = currentUser.tokens_limit ?? 0;
-  const tokensRemaining = currentUser.tokens_remaining ?? (tokensLimit > 0 ? tokensLimit - tokensUsed : 0);
-  const usagePercent = tokensLimit > 0 ? Math.min(tokensUsed / tokensLimit, 1) : 0;
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      const updated = await onRefreshUser();
-      if (updated) setCurrentUser(updated);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  return (
-    <SafeAreaView style={styles.flex} edges={['bottom']}>
-      <Appbar.Header elevated mode="center-aligned">
-        <Appbar.BackAction onPress={onBack} />
-        <Appbar.Content title="个人主页" />
-      </Appbar.Header>
-      <ScrollView
-        contentContainerStyle={styles.profileContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[theme.colors.primary]} />
-        }
-      >
-        <View style={styles.profileHeader}>
-          <Surface mode="flat" style={styles.profileAvatar}>
-            <Text variant="headlineMedium" style={styles.profileAvatarText}>
-              {(currentUser.nickname || currentUser.username).charAt(0).toUpperCase()}
-            </Text>
-          </Surface>
-          <Text variant="titleLarge" style={styles.profileName}>{currentUser.nickname || currentUser.username}</Text>
-          <Text variant="bodyMedium" style={styles.muted}>@{currentUser.username}</Text>
-          {currentUser.role ? <Chip compact icon="account" style={styles.roleChip}>{currentUser.role}</Chip> : null}
-        </View>
-
-        <Divider style={styles.profileDivider} />
-
-        <Card mode="elevated" style={styles.profileCard}>
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.sectionTitle}>Token 使用情况</Text>
-            <View style={styles.tokenStats}>
-              <View style={styles.tokenStatItem}>
-                <Text variant="headlineSmall" style={styles.tokenStatValue}>{tokensUsed.toLocaleString()}</Text>
-                <Text variant="labelSmall" style={styles.muted}>已使用</Text>
-              </View>
-              <View style={styles.tokenStatDivider} />
-              <View style={styles.tokenStatItem}>
-                <Text variant="headlineSmall" style={[styles.tokenStatValue, { color: usagePercent > 0.8 ? theme.colors.error : theme.colors.tertiary }]}>{tokensRemaining.toLocaleString()}</Text>
-                <Text variant="labelSmall" style={styles.muted}>剩余</Text>
-              </View>
-              <View style={styles.tokenStatDivider} />
-              <View style={styles.tokenStatItem}>
-                <Text variant="headlineSmall" style={styles.tokenStatValue}>{tokensLimit > 0 ? tokensLimit.toLocaleString() : '∞'}</Text>
-                <Text variant="labelSmall" style={styles.muted}>总额度</Text>
-              </View>
-            </View>
-            {tokensLimit > 0 ? (
-              <View style={styles.tokenProgressWrap}>
-                <ProgressBar progress={usagePercent} color={usagePercent > 0.8 ? theme.colors.error : theme.colors.primary} style={styles.tokenProgress} />
-                <Text variant="labelSmall" style={styles.muted}>{Math.round(usagePercent * 100)}% 已使用</Text>
-              </View>
-            ) : null}
-          </Card.Content>
-        </Card>
-
-        <Card mode="elevated" style={styles.profileCard}>
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.sectionTitle}>账号信息</Text>
-            <List.Item
-              title="用户名"
-              description={currentUser.username}
-              left={(props) => <List.Icon {...props} icon="account-outline" />}
-            />
-            {currentUser.email ? (
-              <List.Item
-                title="邮箱"
-                description={currentUser.email}
-                left={(props) => <List.Icon {...props} icon="email-outline" />}
-              />
-            ) : null}
-            {currentUser.points !== undefined ? (
-              <List.Item
-                title="站内积分"
-                description={String(currentUser.points)}
-                left={(props) => <List.Icon {...props} icon="star-outline" />}
-              />
-            ) : null}
-            <List.Item
-              title="用户角色"
-              description={currentUser.role || '普通用户'}
-              left={(props) => <List.Icon {...props} icon="shield-account-outline" />}
-            />
-          </Card.Content>
-        </Card>
-
-        <Surface mode="flat" style={styles.announcementCard}>
-          <View style={styles.announcementRow}>
-            <IconButton icon="bullhorn-outline" size={20} iconColor={theme.colors.primary} />
-            <View style={styles.announcementText}>
-              <Text variant="labelMedium" style={styles.announcementTitle}>公告</Text>
-              <Text variant="bodySmall" style={styles.announcementBody}>{APP_COPY.announcement}</Text>
-            </View>
-          </View>
-          <Button
-            mode="contained"
-            icon="open-in-new"
-            onPress={() => Linking.openURL(WEBSITE_URL)}
-            style={styles.announcementButton}
-            contentStyle={styles.announcementButtonContent}
-            labelStyle={styles.announcementButtonLabel}
-          >
-            {APP_COPY.websiteLabel}
-          </Button>
-        </Surface>
-
-        <Surface mode="flat" style={styles.announcementCard}>
-          <View style={styles.announcementRow}>
-            <IconButton icon="qqchat" size={20} iconColor={theme.colors.primary} />
-            <View style={styles.announcementText}>
-              <Text variant="labelMedium" style={styles.announcementTitle}>加入官方 QQ 群</Text>
-              <Text variant="bodySmall" style={styles.announcementBody}>与其他用户交流提示词、反馈建议</Text>
-            </View>
-          </View>
-          <Button
-            mode="contained"
-            icon="open-in-new"
-            onPress={() => Linking.openURL(QQ_GROUP_URL)}
-            style={styles.announcementButton}
-            contentStyle={styles.announcementButtonContent}
-            labelStyle={styles.announcementButtonLabel}
-          >
-            {APP_COPY.joinQQGroup}
-          </Button>
-        </Surface>
-
-        <View style={styles.versionInfo}>
-          <Text variant="labelSmall" style={styles.muted}>AIF Chat v{APP_COPY.version}</Text>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
 // ==================== ChatScreen（主聊天界面） ====================
 
-function ChatScreen({ user, onUserUpdated, notice }: {
-  user: User;
-  onUserUpdated: (user: User) => void;
+function ChatScreen({ config, onConfigChange, notice }: {
+  config: CustomApiConfig;
+  onConfigChange: (config: CustomApiConfig) => void;
   notice: (notice: Notice) => void;
 }) {
   const { theme } = useAppTheme();
@@ -1351,7 +1351,7 @@ function ChatScreen({ user, onUserUpdated, notice }: {
   const [messageText, setMessageText] = useState('');
   const [messagesState, setMessagesState] = useState<ChatMessage[]>([]);
   const [modelList, setModelList] = useState<ModelItem[]>([]);
-  const [currentModel, setCurrentModel] = useState('lite');
+  const [currentModel, setCurrentModel] = useState(config.model);
   const [sending, setSending] = useState(false);
   const [subScreen, setSubScreen] = useState<ChatSubScreen>('chat');
   const setSubScreenAnimated = useCallback((next: ChatSubScreen) => {
@@ -1364,7 +1364,6 @@ function ChatScreen({ user, onUserUpdated, notice }: {
   const [deepThinking, setDeepThinking] = useState(false);
   const [showAnnouncement, setShowAnnouncement] = useState(true);
   const [pendingImage, setPendingImage] = useState<{ base64: string; mimeType: string } | null>(null);
-  const [customApiConfig, setCustomApiConfig] = useState<CustomApiConfig>(DEFAULT_CUSTOM_API_CONFIG);
   const [isRecording, setIsRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const flatListRef = useRef<FlatList>(null);
@@ -1405,25 +1404,30 @@ function ChatScreen({ user, onUserUpdated, notice }: {
     loadRoleplayConfig().then(setRoleplayConfig).catch(() => {});
   }, []);
 
-  // 加载自定义 API 配置
-  useEffect(() => {
-    loadCustomApiConfig().then(setCustomApiConfig).catch(() => {});
-  }, []);
-
   // 加载模型列表
   useEffect(() => {
     let mounted = true;
-    models()
+    fetchOpenAIModels(config)
       .then((result) => {
         if (!mounted) return;
-        const allowed = result.models.filter((m) => isModelAllowed(m.id));
-        setModelList(result.models);
-        const defaultModel = result.default_model || 'lite';
-        setCurrentModel(isModelAllowed(defaultModel) ? defaultModel : (allowed[0]?.id || 'lite'));
+        const list: ModelItem[] = result.map((m) => ({ id: m.id, label: m.id, type: 'chat' }));
+        if (list.length === 0) {
+          list.push({ id: config.model, label: config.model, type: 'chat' });
+        }
+        setModelList(list);
+        const hasCurrent = list.some((m) => m.id === currentModel);
+        if (!hasCurrent) {
+          setCurrentModel(list[0].id);
+        }
       })
-      .catch((error) => notice({ text: asErrorMessage(error), tone: 'error' }));
+      .catch(() => {
+        if (!mounted) return;
+        const fallback: ModelItem[] = [{ id: config.model, label: config.model, type: 'chat' }];
+        setModelList(fallback);
+        setCurrentModel(config.model);
+      });
     return () => { mounted = false; };
-  }, [notice]);
+  }, [config, notice]);
 
   // 初始化对话
   useEffect(() => {
@@ -1438,14 +1442,14 @@ function ChatScreen({ user, onUserUpdated, notice }: {
         const msgs = await getMessages(savedId);
         if (!mounted) return;
         setCurrentConvoId(savedId);
-        setMessagesState(msgs.length > 0 ? msgs : [welcomeMessage(user)]);
+        setMessagesState(msgs.length > 0 ? msgs : [welcomeMessage()]);
       } else {
-        setMessagesState([welcomeMessage(user)]);
+        setMessagesState([welcomeMessage()]);
       }
     };
     init();
     return () => { mounted = false; };
-  }, [user]);
+  }, []);
 
   // 自动滚动
   const scrollToBottom = useCallback((animated = true) => {
@@ -1477,14 +1481,6 @@ function ChatScreen({ user, onUserUpdated, notice }: {
     } catch { /* 静默失败 */ }
   }, []);
 
-  const refreshUserProfile = async (): Promise<User | null> => {
-    try {
-      const result = await me();
-      onUserUpdated(result.user);
-      return result.user;
-    } catch { return null; }
-  };
-
   // 保存角色扮演配置
   const handleSaveRoleplay = useCallback(async (newConfig: RoleplayConfig) => {
     setRoleplayConfig(newConfig);
@@ -1503,13 +1499,6 @@ function ChatScreen({ user, onUserUpdated, notice }: {
   const doSend = useCallback(async (content: string, image: { base64: string; mimeType: string } | undefined, prevMessages?: ChatMessage[]) => {
     const currentMessages = prevMessages || messagesState;
     if (!content && !image) return;
-
-    const usingCustomApi = customApiConfig.enabled && customApiConfig.apiKey.trim();
-
-    if (!usingCustomApi && !isModelAllowed(currentModel)) {
-      notice({ text: '该模型仅限网站使用，请切换到可用模型', tone: 'error' });
-      return;
-    }
 
     Keyboard.dismiss();
 
@@ -1578,36 +1567,8 @@ function ChatScreen({ user, onUserUpdated, notice }: {
       await persistMessages(convoId, finalMessages, currentModel);
     };
 
-    const onCustomApiError = async (error: Error) => {
-      notice({ text: `自定义 API 请求失败：${error.message}。已自动回退到内置 API`, tone: 'error' });
-      // 移除错误占位
-      setMessagesState([...nextMessages, { ...assistantMessage, content: '' }]);
-      // 用内置 API 重试，失败时不再回退
-      chatStream(
-        nextMessages,
-        currentModel,
-        deepThinking,
-        effectiveSystemPrompt,
-        onChunk,
-        onDone,
-        onError,
-      );
-    };
-
-    if (usingCustomApi) {
-      openaiChatStream(nextMessages, customApiConfig, onChunk, onDone, onCustomApiError);
-    } else {
-      chatStream(
-        nextMessages,
-        currentModel,
-        deepThinking,
-        effectiveSystemPrompt,
-        onChunk,
-        onDone,
-        onError,
-      );
-    }
-  }, [messagesState, currentModel, deepThinking, effectiveSystemPrompt, notice, currentConvoId, persistMessages, customApiConfig]);
+    openaiChatStream(nextMessages, config, effectiveSystemPrompt, deepThinking, onChunk, onDone, onError);
+  }, [messagesState, currentModel, config, notice, currentConvoId, persistMessages, effectiveSystemPrompt, deepThinking]);
 
   // 发送消息
   const submit = useCallback(async () => {
@@ -1620,20 +1581,20 @@ function ChatScreen({ user, onUserUpdated, notice }: {
 
   const startNewChat = useCallback(async () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setMessagesState([welcomeMessage(user)]);
+    setMessagesState([welcomeMessage()]);
     setCurrentConvoId(null);
     setPendingImage(null);
     setSubScreenAnimated('chat');
-  }, [user]);
+  }, []);
 
   const switchToConvo = useCallback(async (convoId: string) => {
     const msgs = await getMessages(convoId);
     setCurrentConvoId(convoId);
     await setCurrentConvoId(convoId);
-    setMessagesState(msgs.length > 0 ? msgs : [welcomeMessage(user)]);
+    setMessagesState(msgs.length > 0 ? msgs : [welcomeMessage()]);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setSubScreenAnimated('chat');
-  }, [user]);
+  }, []);
 
   const removeConvo = useCallback(async (convoId: string) => {
     await deleteConversation(convoId);
@@ -1641,9 +1602,9 @@ function ChatScreen({ user, onUserUpdated, notice }: {
     setConvoList(list);
     if (currentConvoId === convoId) {
       setCurrentConvoId(null);
-      setMessagesState([welcomeMessage(user)]);
+      setMessagesState([welcomeMessage()]);
     }
-  }, [currentConvoId, user]);
+  }, [currentConvoId]);
 
   // 重试：重新发送上一条用户消息
   const retryLastMessage = useCallback(async () => {
@@ -1722,12 +1683,11 @@ function ChatScreen({ user, onUserUpdated, notice }: {
 
       setTranscribing(true);
       try {
-        const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
         const info = await FileSystem.getInfoAsync(uri);
         const mimeType = info.exists && 'size' in info && info.size > 0
           ? (uri.endsWith('.m4a') ? 'audio/m4a' : uri.endsWith('.mp3') ? 'audio/mpeg' : 'audio/m4a')
           : 'audio/m4a';
-        const { text } = await transcribeAudio(base64, mimeType);
+        const { text } = await transcribeWithCustomApi(uri, mimeType, config);
         if (text.trim()) {
           setMessageText((prev) => (prev ? prev + ' ' : '') + text.trim());
         } else {
@@ -1743,7 +1703,7 @@ function ChatScreen({ user, onUserUpdated, notice }: {
       setIsRecording(false);
       setTranscribing(false);
     }
-  }, [notice]);
+  }, [notice, config]);
 
   const toggleRecording = useCallback(async () => {
     if (transcribing) return;
@@ -1755,16 +1715,6 @@ function ChatScreen({ user, onUserUpdated, notice }: {
   }, [isRecording, transcribing, startRecording, stopRecording]);
 
   // 子屏幕渲染
-  if (subScreen === 'profile') {
-    return (
-      <ProfileScreen
-        user={user}
-        onBack={() => setSubScreenAnimated('chat')}
-        onRefreshUser={refreshUserProfile}
-      />
-    );
-  }
-
   if (subScreen === 'roleplay') {
     return (
       <RoleplayConfigScreen
@@ -1778,11 +1728,10 @@ function ChatScreen({ user, onUserUpdated, notice }: {
   if (subScreen === 'settings') {
     return (
       <SettingsScreen
-        config={customApiConfig}
+        config={config}
         onSave={async (newConfig) => {
-          setCustomApiConfig(newConfig);
-          await saveCustomApiConfig(newConfig);
-          notice({ text: newConfig.enabled ? '🔌 自定义 API 已启用' : '已关闭自定义 API' });
+          onConfigChange(newConfig);
+          notice({ text: 'API 设置已保存' });
         }}
         onBack={() => setSubScreenAnimated('chat')}
         notice={notice}
@@ -1888,7 +1837,6 @@ function ChatScreen({ user, onUserUpdated, notice }: {
             title={roleplayConfig.enabled ? '角色扮演设置' : '角色扮演'}
             onPress={() => { setMenuVisible(false); setSubScreenAnimated('roleplay'); }}
           />
-          <Menu.Item leadingIcon="account-circle" title="个人主页" onPress={() => { setMenuVisible(false); setSubScreenAnimated('profile'); }} />
           <Menu.Item leadingIcon="tune" title="自定义 API" onPress={() => { setMenuVisible(false); setSubScreenAnimated('settings'); }} />
           <Menu.Item leadingIcon="message-text-outline" title="提示词广场" onPress={() => { setMenuVisible(false); setSubScreenAnimated('prompts'); }} />
           <Divider />
@@ -1952,7 +1900,7 @@ function ChatScreen({ user, onUserUpdated, notice }: {
             <Surface mode="flat" style={styles.emptyChatIconCircle}>
               <Text variant="headlineMedium" style={styles.emptyChatIcon}>✨</Text>
             </Surface>
-            <Text variant="titleMedium" style={[styles.sectionTitle, { textAlign: 'center', marginTop: 12 }]}>你好，{user.nickname || user.username}！</Text>
+            <Text variant="titleMedium" style={[styles.sectionTitle, { textAlign: 'center', marginTop: 12 }]}>你好，旅行者！</Text>
             <Text variant="bodyMedium" style={[styles.muted, { textAlign: 'center', marginTop: 4 }]}>有任何问题都可以问我 ~</Text>
             <View style={styles.emptyChatTips}>
               {['介绍一下你自己', '帮我写一段二次元文案', '今天的天气怎么样'].map((tip) => (
@@ -2075,7 +2023,7 @@ function Root() {
   const { theme } = useAppTheme();
   const styles = useAppStyles();
   const [screen, setScreen] = useState<Screen>('boot');
-  const [user, setUser] = useState<User | null>(null);
+  const [customApiConfig, setCustomApiConfig] = useState<CustomApiConfig>(DEFAULT_CUSTOM_API_CONFIG);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [bootError, setBootError] = useState<string>('');
 
@@ -2091,25 +2039,17 @@ function Root() {
     setScreenAnimated('boot');
     setBootError('');
     try {
-      const token = await getAccessToken();
-      if (token) {
-        try {
-          const result = await me();
-          if (!mounted) return;
-          setUser(result.user);
-          setScreenAnimated('chat');
-          return;
-        } catch {
-          // 已有 token 失效时，降级为游客登录
-        }
-      }
-      const payload = await guestLogin();
+      const config = await loadCustomApiConfig();
       if (!mounted) return;
-      setUser(payload.user);
-      setScreenAnimated('chat');
+      setCustomApiConfig(config);
+      if (isCustomApiReady(config)) {
+        setScreenAnimated('chat');
+      } else {
+        setScreenAnimated('setup');
+      }
     } catch (error) {
       if (!mounted) return;
-      setBootError(error instanceof Error ? error.message : '启动失败，请检查网络连接');
+      setBootError(error instanceof Error ? error.message : '启动失败，请检查存储权限');
       setScreenAnimated('boot_error');
     }
   }, []);
@@ -2117,6 +2057,12 @@ function Root() {
   useEffect(() => {
     boot();
   }, [boot]);
+
+  const handleSaveApiConfig = useCallback(async (config: CustomApiConfig) => {
+    setCustomApiConfig(config);
+    await saveCustomApiConfig(config);
+    setScreenAnimated('chat');
+  }, []);
 
   if (screen === 'boot') {
     return (
@@ -2143,13 +2089,23 @@ function Root() {
     );
   }
 
+  if (screen === 'setup') {
+    return (
+      <ApiSetupScreen
+        config={customApiConfig}
+        onSave={handleSaveApiConfig}
+        notice={showNotice}
+      />
+    );
+  }
+
   return (
     <View style={styles.flex}>
-      {screen === 'chat' && user ? (
+      {screen === 'chat' ? (
         <ChatScreen
-          user={user}
+          config={customApiConfig}
           notice={showNotice}
-          onUserUpdated={(updatedUser) => setUser(updatedUser)}
+          onConfigChange={handleSaveApiConfig}
         />
       ) : null}
       <Snackbar
