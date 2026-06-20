@@ -1,0 +1,57 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（如 1.8.1）'
+        required: true
+        default: '1.8.1'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo prebuild
+        run: npx expo prebuild --platform android --clean
+
+      - name: Build release APK
+        run: cd android && ./gradlew assembleRelease
+
+      - name: Rename APK
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          mv android/app/build/outputs/apk/release/app-release.apk "AIFChat-${VERSION}.apk"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          gh release create "v${VERSION}" "AIFChat-${VERSION}.apk" \
+            --title "AIF Chat v${VERSION}" \
+            --notes "AIF Chat Android APK v${VERSION}\n\n- 默认使用自定义 OpenAI 兼容 API\n- 移除登录/注册与个人主页\n- 新增 API 配置引导页\n- 语音输入、模型列表切换为自定义 API" \
+            --repo "${{ github.repository }}"

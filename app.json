@@ -9,6 +9,9 @@
       "eas": {
         "projectId": "8e4a71cb-e25f-44af-b09d-57ec5aff6328"
       }
+    },
+    "android": {
+      "package": "com.anonymous.aifchatmobile"
     }
   }
 }

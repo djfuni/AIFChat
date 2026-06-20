@@ -13,6 +13,9 @@ android/app/release/
 *.apk
 *.aab
 *.keystore
+android-sdk/
+gradle-dist/
+gradle-*.zip
 
 # Expo
 .expo/
