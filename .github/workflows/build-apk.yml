@@ -1,6 +1,8 @@
 name: Build Android APK
 
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
     inputs:
       version:
@@ -43,14 +45,14 @@ jobs:
 
       - name: Rename APK
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          VERSION="${{ github.event.inputs.version || '1.8.1' }}"
           mv android/app/build/outputs/apk/release/app-release.apk "AIFChat-${VERSION}.apk"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          VERSION="${{ github.event.inputs.version || '1.8.1' }}"
           gh release create "v${VERSION}" "AIFChat-${VERSION}.apk" \
             --title "AIF Chat v${VERSION}" \
             --notes "AIF Chat Android APK v${VERSION}\n\n- 默认使用自定义 OpenAI 兼容 API\n- 移除登录/注册与个人主页\n- 新增 API 配置引导页\n- 语音输入、模型列表切换为自定义 API" \
